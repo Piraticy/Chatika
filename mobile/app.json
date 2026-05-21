@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Chatika",
+    "slug": "chatika",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "backgroundColor": "#0A1221"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chatika.app"
+    },
+    "android": {
+      "package": "com.chatika.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0A1221"
+      },
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

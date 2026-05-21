@@ -1,0 +1,22 @@
+# General
+.DS_Store
+.env
+.env.*
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+.expo/
+
+# App data
+backend/chatika.db
+backend/media/

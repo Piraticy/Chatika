@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: chatika-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: AUTO_CREATE_SCHEMA
+        value: "false"
+      - key: REDIS_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: BACKUP_ENCRYPTION_KEY
+        sync: false

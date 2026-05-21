@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: chatika-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=sqlite:///./chatika.db
+      - REDIS_URL=redis://redis:6379/0
+      - AUTO_CREATE_SCHEMA=false
+      - ICE_SERVERS=[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:coturn:3478"],"username":"chatika","credential":"chatika-turn-secret"}]
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      - redis
+
+  web:
+    image: node:20-alpine
+    container_name: chatika-web
+    working_dir: /workspace
+    volumes:
+      - ./web:/workspace
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatika-redis
+    ports:
+      - "6379:6379"
+
+  coturn:
+    image: coturn/coturn:4.6.2
+    container_name: chatika-coturn
+    command:
+      - -n
+      - --log-file=stdout
+      - --lt-cred-mech
+      - --realm=chatika.local
+      - --user=chatika:chatika-turn-secret
+      - --external-ip=127.0.0.1
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
