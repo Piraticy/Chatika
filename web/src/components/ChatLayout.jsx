@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 
 export default function ChatLayout({
   me,
@@ -14,6 +14,13 @@ export default function ChatLayout({
   onApprove
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
+  const messagesRef = useRef(null);
+  const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [orderedMessages, activeRoomId]);
 
   function submitMessage(e) {
     e.preventDefault();
@@ -42,16 +49,16 @@ export default function ChatLayout({
       <aside className="sidebar glass">
         <div className="sidebar-head">
           <img src="/logo.svg" alt="Chatika" className="mini-logo" />
-          <div>
-            <h2>{me.username}</h2>
+          <div className="identity">
+            <h2>@{me.username}</h2>
             <small>{statusText}</small>
           </div>
         </div>
 
         <form onSubmit={submitRoom} className="new-room">
-          <input name="name" placeholder="Room name" required />
+          <input name="name" placeholder="Create room name" required />
           <input name="participant_ids" placeholder="Participant IDs (comma separated)" />
-          <button type="submit">Create</button>
+          <button type="submit">Create Room</button>
         </form>
 
         <div className="room-list">
@@ -61,7 +68,7 @@ export default function ChatLayout({
               className={room.id === activeRoomId ? 'room-item active' : 'room-item'}
               onClick={() => onSelectRoom(room.id)}
             >
-              <span>{room.name}</span>
+              <span className="room-name">{room.name}</span>
               <small>{room.is_group ? 'Group' : 'Direct'}</small>
             </button>
           ))}
@@ -81,13 +88,20 @@ export default function ChatLayout({
       </aside>
 
       <main className="thread glass">
-        <header>
+        <header className="thread-head">
           <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
           <small>{activeRoom ? (activeRoom.is_group ? 'Group call ready' : 'Private chat ready') : ''}</small>
         </header>
 
-        <section className="messages">
-          {messages.map((m) => (
+        <section className="messages" ref={messagesRef}>
+          {!orderedMessages.length && (
+            <div className="empty-chat">
+              <h3>No messages yet</h3>
+              <p>Start the conversation in this room.</p>
+            </div>
+          )}
+
+          {orderedMessages.map((m) => (
             <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
               <p>{m.text || `[${m.message_type}]`}</p>
               <time>{new Date(m.created_at).toLocaleTimeString()}</time>
