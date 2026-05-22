@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,7 +8,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateRoomInput, MessageOut, RoomOut, SendMessageInput
+from app.schemas.chat import CreateRoomInput, MessageOut, MessageReactionInput, RoomOut, SendMessageInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -16,6 +18,36 @@ router = APIRouter(prefix='/chat', tags=['chat'])
 def _room_member_ids(db: Session, room_id: str) -> list[str]:
     members = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id == room_id)).all()
     return [m.user_id for m in members]
+
+
+def _parse_reactions(message: Message) -> dict[str, list[str]]:
+    try:
+        parsed = json.loads(message.reaction_users_json or '{}')
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    clean: dict[str, list[str]] = {}
+    for emoji, users in parsed.items():
+        if isinstance(emoji, str) and isinstance(users, list):
+            clean[emoji] = [str(uid) for uid in users]
+    return clean
+
+
+def _serialize_message(message: Message) -> dict:
+    return {
+        'id': message.id,
+        'room_id': message.room_id,
+        'sender_id': message.sender_id,
+        'message_type': message.message_type,
+        'is_encrypted': message.is_encrypted,
+        'sender_key_id': message.sender_key_id,
+        'encrypted_body': message.encrypted_body,
+        'reaction_users': _parse_reactions(message),
+        'text': message.text,
+        'media_url': message.media_url,
+        'created_at': message.created_at.isoformat(),
+    }
 
 
 @router.post('/rooms', response_model=RoomOut)
@@ -78,21 +110,7 @@ async def send_message(
     db.commit()
     db.refresh(message)
 
-    payload = {
-        'event': 'message:new',
-        'data': {
-            'id': message.id,
-            'room_id': message.room_id,
-            'sender_id': message.sender_id,
-            'message_type': message.message_type,
-            'is_encrypted': message.is_encrypted,
-            'sender_key_id': message.sender_key_id,
-            'encrypted_body': message.encrypted_body,
-            'text': message.text,
-            'media_url': message.media_url,
-            'created_at': message.created_at.isoformat(),
-        },
-    }
+    payload = {'event': 'message:new', 'data': _serialize_message(message)}
     recipient_ids = _room_member_ids(db, message.room_id)
     await ws_manager.broadcast_users(recipient_ids, payload)
 
@@ -122,6 +140,7 @@ async def send_message(
         is_encrypted=message.is_encrypted,
         sender_key_id=message.sender_key_id,
         encrypted_body=message.encrypted_body,
+        reaction_users=_parse_reactions(message),
         text=message.text,
         media_url=message.media_url,
         created_at=message.created_at,
@@ -146,9 +165,76 @@ def list_messages(room_id: str, current_user: User = Depends(get_current_user), 
             is_encrypted=m.is_encrypted,
             sender_key_id=m.sender_key_id,
             encrypted_body=m.encrypted_body,
+            reaction_users=_parse_reactions(m),
             text=m.text,
             media_url=m.media_url,
             created_at=m.created_at,
         )
         for m in messages
     ]
+
+
+@router.post('/messages/{message_id}/react', response_model=MessageOut)
+async def react_to_message(
+    message_id: str,
+    data: MessageReactionInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    membership = db.scalar(
+        select(ChatRoomMember).where(
+            ChatRoomMember.room_id == data.room_id,
+            ChatRoomMember.user_id == current_user.id,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail='Not a member of this room')
+
+    message = db.get(Message, message_id)
+    if not message or message.room_id != data.room_id:
+        raise HTTPException(status_code=404, detail='Message not found in this room')
+
+    reactions = _parse_reactions(message)
+    emoji = data.emoji.strip()
+    users_for_emoji = reactions.get(emoji, [])
+    if current_user.id in users_for_emoji:
+        users_for_emoji = [uid for uid in users_for_emoji if uid != current_user.id]
+    else:
+        users_for_emoji.append(current_user.id)
+
+    if users_for_emoji:
+        reactions[emoji] = users_for_emoji
+    else:
+        reactions.pop(emoji, None)
+
+    message.reaction_users_json = json.dumps(reactions, separators=(',', ':'))
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    recipient_ids = _room_member_ids(db, data.room_id)
+    await ws_manager.broadcast_users(
+        recipient_ids,
+        {
+            'event': 'message:reaction',
+            'data': {
+                'message_id': message.id,
+                'room_id': data.room_id,
+                'reaction_users': _parse_reactions(message),
+            },
+        },
+    )
+
+    return MessageOut(
+        id=message.id,
+        room_id=message.room_id,
+        sender_id=message.sender_id,
+        message_type=message.message_type,
+        is_encrypted=message.is_encrypted,
+        sender_key_id=message.sender_key_id,
+        encrypted_body=message.encrypted_body,
+        reaction_users=_parse_reactions(message),
+        text=message.text,
+        media_url=message.media_url,
+        created_at=message.created_at,
+    )

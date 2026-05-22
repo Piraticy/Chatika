@@ -425,6 +425,53 @@ input::placeholder {
   line-height: 1.4;
 }
 
+.reaction-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reaction-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.reaction-btn {
+  border: 0;
+  cursor: pointer;
+  border-radius: 999px;
+  background: #0f2748;
+  color: #eaf3ff;
+  font-size: 0.9rem;
+  padding: 3px 7px;
+}
+
+.reaction-btn:hover {
+  background: #193a6a;
+}
+
+.reaction-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reaction-chip {
+  border-radius: 999px;
+  background: #0f2748;
+  border: 1px solid #ffffff1f;
+  color: #d7e8ff;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+}
+
+.reaction-chip.mine {
+  border-color: #3df0ff;
+  box-shadow: inset 0 0 0 1px #3df0ff33;
+}
+
 .msg-sender {
   font-size: 0.68rem;
   letter-spacing: 0.02em;

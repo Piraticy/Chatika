@@ -34,6 +34,12 @@ class MessageOut(BaseModel):
     is_encrypted: bool
     sender_key_id: Optional[str]
     encrypted_body: Optional[str]
+    reaction_users: dict[str, list[str]] = Field(default_factory=dict)
     text: Optional[str]
     media_url: Optional[str]
     created_at: datetime
+
+
+class MessageReactionInput(BaseModel):
+    room_id: str
+    emoji: str = Field(min_length=1, max_length=8)

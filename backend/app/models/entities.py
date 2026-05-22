@@ -55,6 +55,7 @@ class Message(Base, UUIDTimeMixin):
     is_encrypted: Mapped[bool] = mapped_column(Boolean, default=False)
     sender_key_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     encrypted_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reaction_users_json: Mapped[str] = mapped_column(Text, default='{}')
     text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 

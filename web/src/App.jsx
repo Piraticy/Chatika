@@ -87,6 +87,10 @@ export default function App() {
       onEvent: (evt) => {
         if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
           setMessages((prev) => [evt.data, ...prev]);
+        } else if (evt.event === 'message:reaction' && evt.data.room_id === activeRoomId) {
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === evt.data.message_id ? { ...msg, reaction_users: evt.data.reaction_users || {} } : msg))
+          );
         } else if (evt.event === 'typing:update') {
           const { room_id: roomId, user_id: userId, is_typing: isTyping } = evt.data || {};
           if (!roomId || !userId || userId === me.id) return;
@@ -191,6 +195,16 @@ export default function App() {
     setPendingUsers(pending);
   }
 
+  async function reactToMessage(messageId, emoji) {
+    if (!activeRoomId) return;
+    const updated = await api(`/chat/messages/${messageId}/react`, {
+      method: 'POST',
+      token,
+      body: { room_id: activeRoomId, emoji }
+    });
+    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? updated : msg)));
+  }
+
   const statusText = useMemo(() => (me?.is_online ? 'Online now' : 'Offline'), [me]);
   const typingUsers = useMemo(() => Object.keys(typingByRoom[activeRoomId] || {}), [typingByRoom, activeRoomId]);
 
@@ -220,6 +234,7 @@ export default function App() {
       onApprove={approveUser}
       onTyping={sendTyping}
       typingUsers={typingUsers}
+      onReact={reactToMessage}
     />
   );
 }

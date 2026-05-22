@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
+const REACTION_EMOJIS = ['👍', '❤️', '🔥'];
 
 export default function ChatLayout({
   me,
@@ -15,7 +16,8 @@ export default function ChatLayout({
   pendingUsers,
   onApprove,
   onTyping,
-  typingUsers
+  typingUsers,
+  onReact
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
@@ -92,6 +94,17 @@ export default function ChatLayout({
     onTyping?.(Boolean(next.trim()));
   }
 
+  function reactionSummary(reactionUsers) {
+    const src = reactionUsers || {};
+    return Object.entries(src)
+      .map(([emoji, users]) => ({
+        emoji,
+        count: Array.isArray(users) ? users.length : 0,
+        mine: Array.isArray(users) ? users.includes(me.id) : false
+      }))
+      .filter((item) => item.count > 0);
+  }
+
   return (
     <div className="chat-root">
       <aside className="sidebar glass">
@@ -160,6 +173,28 @@ export default function ChatLayout({
             <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
               {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : 'Member'}</span>}
               <p>{m.text || `[${m.message_type}]`}</p>
+              <div className="reaction-row">
+                <div className="reaction-buttons">
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="reaction-btn"
+                      onClick={() => onReact?.(m.id, emoji)}
+                      aria-label={`React ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <div className="reaction-summary">
+                  {reactionSummary(m.reaction_users).map((item) => (
+                    <span key={`${m.id}-${item.emoji}`} className={item.mine ? 'reaction-chip mine' : 'reaction-chip'}>
+                      {item.emoji} {item.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
               <time>{new Date(m.created_at).toLocaleTimeString()}</time>
             </article>
           ))}
