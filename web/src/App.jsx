@@ -33,6 +33,11 @@ export default function App() {
     localStorage.setItem(REFRESH_KEY, refreshToken || '');
   }, [token, refreshToken]);
 
+  useEffect(() => {
+    // Warm the free-tier backend early to reduce first interactive wait on mobile.
+    fetch(`${API_URL}/health`).catch(() => undefined);
+  }, []);
+
   async function hydrateSession(currentToken) {
     const meData = await api('/auth/me', { token: currentToken });
     setMe(meData);

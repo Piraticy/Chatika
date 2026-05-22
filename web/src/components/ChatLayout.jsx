@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
+const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 
 export default function ChatLayout({
   me,
@@ -17,6 +19,9 @@ export default function ChatLayout({
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
+  const composerRef = useRef(null);
+  const [draft, setDraft] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const groupedMessages = useMemo(() => {
     const grouped = [];
@@ -47,14 +52,25 @@ export default function ChatLayout({
     messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [orderedMessages, activeRoomId]);
 
+  useEffect(() => {
+    function onDocumentClick(event) {
+      if (!composerRef.current) return;
+      if (!composerRef.current.contains(event.target)) {
+        setEmojiOpen(false);
+      }
+    }
+    document.addEventListener('click', onDocumentClick);
+    return () => document.removeEventListener('click', onDocumentClick);
+  }, []);
+
   function submitMessage(e) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const text = String(form.get('text') || '').trim();
+    const text = draft.trim();
     if (!text || !activeRoomId) return;
     onSend(text);
     onTyping?.(false);
-    e.currentTarget.reset();
+    setDraft('');
+    setEmojiOpen(false);
   }
 
   function submitRoom(e) {
@@ -68,6 +84,12 @@ export default function ChatLayout({
     if (!name) return;
     onCreateRoom(name, ids);
     e.currentTarget.reset();
+  }
+
+  function addEmoji(emoji) {
+    const next = `${draft}${emoji}`;
+    setDraft(next);
+    onTyping?.(Boolean(next.trim()));
   }
 
   return (
@@ -144,14 +166,37 @@ export default function ChatLayout({
           {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
 
-        <form onSubmit={submitMessage} className="composer">
+        <form onSubmit={submitMessage} className="composer" ref={composerRef}>
+          <button
+            type="button"
+            className="emoji-toggle"
+            onClick={() => setEmojiOpen((prev) => !prev)}
+            aria-label="Toggle emoji picker"
+            title="Emoji"
+            disabled={!activeRoomId}
+          >
+            🙂
+          </button>
           <input
             name="text"
             placeholder="Write a message..."
             disabled={!activeRoomId}
-            onChange={(e) => onTyping?.(Boolean(e.target.value.trim()))}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onTyping?.(Boolean(e.target.value.trim()));
+            }}
             onBlur={() => onTyping?.(false)}
           />
+          {emojiOpen && (
+            <div className="emoji-picker" role="dialog" aria-label="Emoji picker">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${emoji}`}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           <button type="submit" disabled={!activeRoomId}>
             Send
           </button>

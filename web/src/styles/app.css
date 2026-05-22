@@ -453,14 +453,56 @@ input::placeholder {
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 10px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+  position: relative;
 }
 
 .composer input {
   padding: 12px;
+}
+
+.emoji-toggle {
+  min-width: 50px;
+  padding: 0;
+  font-size: 1.3rem;
+  display: grid;
+  place-items: center;
+  background: #1a2f52;
+  color: #d9e9ff;
+}
+
+.emoji-picker {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: min(92vw, 320px);
+  background: #0a1c38f2;
+  border: 1px solid #ffffff24;
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: 0 12px 32px #00000066;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  z-index: 10;
+}
+
+.emoji-picker button {
+  min-width: auto;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 10px;
+  background: #13305a;
+  color: #f1f7ff;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.emoji-picker button:hover {
+  background: #1d467f;
 }
 
 .composer button {
@@ -508,5 +550,12 @@ input::placeholder {
 
   .msg {
     max-width: 92%;
+  }
+
+  .emoji-picker {
+    left: 0;
+    right: 0;
+    width: 100%;
+    grid-template-columns: repeat(6, 1fr);
   }
 }
