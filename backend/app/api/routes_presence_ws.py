@@ -22,6 +22,11 @@ def _user_room_mates(db: Session, user_id: str) -> list[str]:
     return list({m.user_id for m in all_members if m.user_id != user_id})
 
 
+def _room_member_ids(db: Session, room_id: str) -> list[str]:
+    members = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id == room_id)).all()
+    return [m.user_id for m in members]
+
+
 async def _broadcast_presence(db: Session, user: User) -> None:
     payload = {
         'event': 'presence:update',
@@ -75,6 +80,29 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                             'data': data,
                         },
                     )
+            elif event == 'typing:update':
+                room_id = incoming.get('room_id')
+                is_typing = bool(incoming.get('is_typing', False))
+                if room_id:
+                    membership = db.scalar(
+                        select(ChatRoomMember).where(
+                            ChatRoomMember.room_id == room_id,
+                            ChatRoomMember.user_id == user.id,
+                        )
+                    )
+                    if membership:
+                        targets = [uid for uid in _room_member_ids(db, room_id) if uid != user.id]
+                        await ws_manager.broadcast_users(
+                            targets,
+                            {
+                                'event': 'typing:update',
+                                'data': {
+                                    'room_id': room_id,
+                                    'user_id': user.id,
+                                    'is_typing': is_typing,
+                                },
+                            },
+                        )
             elif event == 'ping':
                 await websocket.send_json({'event': 'pong'})
     except WebSocketDisconnect:

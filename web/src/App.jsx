@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AuthPanel from './components/AuthPanel';
 import ChatLayout from './components/ChatLayout';
@@ -21,6 +21,10 @@ export default function App() {
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [typingByRoom, setTypingByRoom] = useState({});
+  const socketRef = useRef(null);
+  const typingTimersRef = useRef({});
+  const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
 
   const isAuthed = Boolean(token && me);
 
@@ -78,12 +82,42 @@ export default function App() {
       onEvent: (evt) => {
         if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
           setMessages((prev) => [evt.data, ...prev]);
+        } else if (evt.event === 'typing:update') {
+          const { room_id: roomId, user_id: userId, is_typing: isTyping } = evt.data || {};
+          if (!roomId || !userId || userId === me.id) return;
+
+          setTypingByRoom((prev) => {
+            const current = { ...(prev[roomId] || {}) };
+            if (isTyping) {
+              current[userId] = true;
+            } else {
+              delete current[userId];
+            }
+            return { ...prev, [roomId]: current };
+          });
+
+          if (typingTimersRef.current[userId]) {
+            clearTimeout(typingTimersRef.current[userId]);
+          }
+          if (isTyping) {
+            typingTimersRef.current[userId] = setTimeout(() => {
+              setTypingByRoom((prev) => {
+                const current = { ...(prev[roomId] || {}) };
+                delete current[userId];
+                return { ...prev, [roomId]: current };
+              });
+            }, 3500);
+          }
         }
       }
     });
+    socketRef.current = socket;
 
-    return () => socket.close();
-  }, [isAuthed, token, activeRoomId]);
+    return () => {
+      socketRef.current = null;
+      socket.close();
+    };
+  }, [isAuthed, token, activeRoomId, me?.id]);
 
   useEffect(() => {
     if (!token || !activeRoomId) return;
@@ -126,6 +160,22 @@ export default function App() {
     });
   }
 
+  function sendTyping(isTyping) {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !activeRoomId) return;
+    const now = Date.now();
+    const last = typingEmitRef.current;
+    if (last.roomId === activeRoomId && last.state === isTyping && now - last.at < 1200) return;
+
+    typingEmitRef.current = { roomId: activeRoomId, state: isTyping, at: now };
+    socketRef.current.send(
+      JSON.stringify({
+        event: 'typing:update',
+        room_id: activeRoomId,
+        is_typing: isTyping
+      })
+    );
+  }
+
   async function approveUser(userId) {
     await api('/admin/approve-user', {
       method: 'POST',
@@ -137,6 +187,7 @@ export default function App() {
   }
 
   const statusText = useMemo(() => (me?.is_online ? 'Online now' : 'Offline'), [me]);
+  const typingUsers = useMemo(() => Object.keys(typingByRoom[activeRoomId] || {}), [typingByRoom, activeRoomId]);
 
   if (!isAuthed) {
     return (
@@ -162,6 +213,8 @@ export default function App() {
       isAdmin={me.is_admin}
       pendingUsers={pendingUsers}
       onApprove={approveUser}
+      onTyping={sendTyping}
+      typingUsers={typingUsers}
     />
   );
 }

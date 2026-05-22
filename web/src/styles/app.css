@@ -260,6 +260,33 @@ input::placeholder {
 
 .room-item .room-name {
   font-weight: 700;
+  position: relative;
+  padding-left: 34px;
+}
+
+.room-item .room-name::before,
+.room-item .room-name::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.room-item .room-name::before {
+  left: 0;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(140deg, #4af2ff, #2c9cff);
+  box-shadow: 0 0 0 2px #0d2040;
+}
+
+.room-item .room-name::after {
+  left: 11px;
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(140deg, #ffb787, #ff8262);
+  box-shadow: 0 0 0 2px #0d2040;
 }
 
 .room-item small {
@@ -306,6 +333,10 @@ input::placeholder {
 .thread-head {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .thread-head h2 {
@@ -316,6 +347,38 @@ input::placeholder {
 .thread-head small {
   color: var(--muted);
   font-size: 1.25rem;
+}
+
+.avatar-stack {
+  display: flex;
+  align-items: center;
+}
+
+.avatar-stack span {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+  border: 2px solid #09152d;
+  margin-left: -8px;
+}
+
+.avatar-stack span:nth-child(1) {
+  background: linear-gradient(135deg, #39f2ff, #2a8cff);
+  color: #062134;
+}
+
+.avatar-stack span:nth-child(2) {
+  background: linear-gradient(135deg, #63ffb4, #1acd86);
+  color: #073022;
+}
+
+.avatar-stack span:nth-child(3) {
+  background: linear-gradient(135deg, #ffc796, #ff8462);
+  color: #3d180f;
 }
 
 .messages {
@@ -362,11 +425,30 @@ input::placeholder {
   line-height: 1.4;
 }
 
+.msg-sender {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #9dd5ff;
+  margin-bottom: 3px;
+  display: block;
+}
+
 .msg time {
   margin-top: 4px;
   display: block;
   font-size: 0.74rem;
   color: #9fb7db;
+}
+
+.typing-indicator {
+  align-self: flex-start;
+  color: #8dd4ff;
+  background: #102743b3;
+  border: 1px solid #ffffff1f;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
 }
 
 .composer {

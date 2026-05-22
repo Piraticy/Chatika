@@ -11,11 +11,36 @@ export default function ChatLayout({
   statusText,
   isAdmin,
   pendingUsers,
-  onApprove
+  onApprove,
+  onTyping,
+  typingUsers
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const groupedMessages = useMemo(() => {
+    const grouped = [];
+    let previous = null;
+
+    for (const msg of orderedMessages) {
+      const currentTime = new Date(msg.created_at).getTime();
+      const previousTime = previous ? new Date(previous.created_at).getTime() : 0;
+      const withinWindow = previous ? Math.abs(currentTime - previousTime) < 5 * 60 * 1000 : false;
+      const sameSender = previous ? previous.sender_id === msg.sender_id : false;
+
+      grouped.push({
+        ...msg,
+        startsGroup: !sameSender || !withinWindow
+      });
+      previous = msg;
+    }
+    return grouped;
+  }, [orderedMessages]);
+  const typingText = useMemo(() => {
+    if (!typingUsers?.length) return '';
+    if (typingUsers.length === 1) return 'Someone is typing...';
+    return `${typingUsers.length} people are typing...`;
+  }, [typingUsers]);
 
   useEffect(() => {
     if (!messagesRef.current) return;
@@ -28,6 +53,7 @@ export default function ChatLayout({
     const text = String(form.get('text') || '').trim();
     if (!text || !activeRoomId) return;
     onSend(text);
+    onTyping?.(false);
     e.currentTarget.reset();
   }
 
@@ -89,8 +115,15 @@ export default function ChatLayout({
 
       <main className="thread glass">
         <header className="thread-head">
-          <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
-          <small>{activeRoom ? (activeRoom.is_group ? 'Group call ready' : 'Private chat ready') : ''}</small>
+          <div>
+            <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
+            <small>{activeRoom ? (activeRoom.is_group ? 'Group call ready' : 'Private chat ready') : ''}</small>
+          </div>
+          <div className="avatar-stack" aria-hidden="true">
+            <span>A</span>
+            <span>C</span>
+            <span>K</span>
+          </div>
         </header>
 
         <section className="messages" ref={messagesRef}>
@@ -101,16 +134,24 @@ export default function ChatLayout({
             </div>
           )}
 
-          {orderedMessages.map((m) => (
+          {groupedMessages.map((m) => (
             <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
+              {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : 'Member'}</span>}
               <p>{m.text || `[${m.message_type}]`}</p>
               <time>{new Date(m.created_at).toLocaleTimeString()}</time>
             </article>
           ))}
+          {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
 
         <form onSubmit={submitMessage} className="composer">
-          <input name="text" placeholder="Write a message..." disabled={!activeRoomId} />
+          <input
+            name="text"
+            placeholder="Write a message..."
+            disabled={!activeRoomId}
+            onChange={(e) => onTyping?.(Boolean(e.target.value.trim()))}
+            onBlur={() => onTyping?.(false)}
+          />
           <button type="submit" disabled={!activeRoomId}>
             Send
           </button>
