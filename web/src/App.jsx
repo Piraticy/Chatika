@@ -23,6 +23,7 @@ export default function App() {
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
+  const [readByMessage, setReadByMessage] = useState({});
   const [pendingUsers, setPendingUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
@@ -44,6 +45,7 @@ export default function App() {
   const [callError, setCallError] = useState('');
   const [inviteStatus, setInviteStatus] = useState(null);
   const [mediaError, setMediaError] = useState('');
+  const [messageError, setMessageError] = useState('');
   const socketRef = useRef(null);
   const typingTimersRef = useRef({});
   const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
@@ -51,9 +53,11 @@ export default function App() {
   const peerConnectionsRef = useRef(new Map());
   const pendingIceRef = useRef(new Map());
   const iceServersRef = useRef([]);
+  const remoteStreamsRef = useRef(new Map());
   const localCallStreamRef = useRef(null);
   const callPeerConnectionsRef = useRef(new Map());
   const callPendingIceRef = useRef(new Map());
+  const remoteCallStreamsRef = useRef(new Map());
 
   const isAuthed = Boolean(token && me);
 
@@ -119,7 +123,17 @@ export default function App() {
       token,
       onEvent: (evt) => {
         if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
+          if (evt.data.sender_id === me.id) return;
           setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
+          sendReadReceipts([evt.data]);
+        } else if (evt.event === 'message:read' && evt.data.room_id === activeRoomId && evt.data.reader_id !== me.id) {
+          setReadByMessage((prev) => {
+            const next = { ...prev };
+            (evt.data.message_ids || []).forEach((messageId) => {
+              next[messageId] = true;
+            });
+            return next;
+          });
         } else if (evt.event === 'room:invite' && evt.data?.room) {
           setRooms((prev) => [evt.data.room, ...prev.filter((room) => room.id !== evt.data.room.id)]);
         } else if (evt.event === 'message:reaction' && evt.data.room_id === activeRoomId) {
@@ -160,7 +174,8 @@ export default function App() {
             }, 3500);
           }
         }
-      }
+      },
+      onOpen: () => sendReadReceipts(messages)
     });
     socketRef.current = socket;
 
@@ -219,12 +234,46 @@ export default function App() {
     }
   }
 
+  function sendReadReceipts(candidateMessages = messages) {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !activeRoomId) return;
+    const messageIds = candidateMessages
+      .filter((message) => message.room_id === activeRoomId && message.sender_id !== me?.id && !String(message.id).startsWith('local-'))
+      .map((message) => message.id);
+    if (!messageIds.length) return;
+    socketRef.current.send(JSON.stringify({ event: 'message:read', room_id: activeRoomId, message_ids: messageIds }));
+  }
+
+  useEffect(() => {
+    sendReadReceipts(messages);
+  }, [messages, activeRoomId, me?.id]);
+
   async function sendMessage(text) {
-    await api('/chat/messages', {
-      method: 'POST',
-      token,
-      body: { room_id: activeRoomId, text, message_type: 'text' }
-    });
+    const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticMessage = {
+      id: localId,
+      room_id: activeRoomId,
+      sender_id: me.id,
+      message_type: 'text',
+      is_encrypted: false,
+      reaction_users: {},
+      text,
+      media_url: null,
+      created_at: new Date().toISOString(),
+      status: 'sending'
+    };
+    setMessageError('');
+    setMessages((prev) => [optimisticMessage, ...prev]);
+    try {
+      const sent = await api('/chat/messages', {
+        method: 'POST',
+        token,
+        body: { room_id: activeRoomId, text, message_type: 'text' }
+      });
+      setMessages((prev) => prev.map((message) => (message.id === localId ? { ...sent, status: 'sent' } : message)));
+    } catch (error) {
+      setMessages((prev) => prev.filter((message) => message.id !== localId));
+      setMessageError(error.message || 'Message could not be sent.');
+    }
   }
 
   async function sendMedia(file, requestedType) {
@@ -233,7 +282,7 @@ export default function App() {
     try {
       const uploaded = await uploadFile(file, { token });
       const messageType = requestedType || (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file');
-      await api('/chat/messages', {
+      const sent = await api('/chat/messages', {
         method: 'POST',
         token,
         body: {
@@ -243,6 +292,7 @@ export default function App() {
           media_url: uploaded.media_url
         }
       });
+      setMessages((prev) => [sent, ...prev.filter((message) => message.id !== sent.id)]);
     } catch (error) {
       setMediaError(error.message || 'Unable to send this media.');
     }
@@ -313,10 +363,12 @@ export default function App() {
       setRooms([]);
       setActiveRoomId('');
       setMessages([]);
+      setReadByMessage({});
       setPendingUsers([]);
       setAdminUsers([]);
       setAdminOpen(false);
       setInviteStatus(null);
+      setMessageError('');
       setError('');
     }
   }
@@ -335,9 +387,11 @@ export default function App() {
     if (iceServersRef.current.length) return iceServersRef.current;
     try {
       const config = await api('/realtime/ice-config', { token });
-      iceServersRef.current = config.ice_servers || [];
+      iceServersRef.current = config.ice_servers?.length
+        ? config.ice_servers
+        : [{ urls: ['stun:stun.l.google.com:19302'] }];
     } catch (_error) {
-      iceServersRef.current = [];
+      iceServersRef.current = [{ urls: ['stun:stun.l.google.com:19302'] }];
     }
     return iceServersRef.current;
   }
@@ -369,13 +423,16 @@ export default function App() {
       if (event.candidate) sendCallSignal(userId, { type: 'ice', candidate: event.candidate });
     };
     peer.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (remoteStream) setRemoteStreams((prev) => ({ ...prev, [userId]: remoteStream }));
+      const remoteStream = event.streams[0] || remoteStreamsRef.current.get(userId) || new MediaStream();
+      if (!event.streams[0] && !remoteStream.getTracks().includes(event.track)) remoteStream.addTrack(event.track);
+      remoteStreamsRef.current.set(userId, remoteStream);
+      setRemoteStreams((prev) => ({ ...prev, [userId]: remoteStream }));
     };
     peer.onconnectionstatechange = () => {
       if (['failed', 'closed'].includes(peer.connectionState)) {
         peer.close();
         peerConnectionsRef.current.delete(userId);
+        remoteStreamsRef.current.delete(userId);
         setRemoteStreams((prev) => {
           const next = { ...prev };
           delete next[userId];
@@ -403,13 +460,16 @@ export default function App() {
       if (event.candidate) sendCallSignal(userId, { type: 'call-ice', candidate: event.candidate });
     };
     peer.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (remoteStream) setRemoteCallStreams((prev) => ({ ...prev, [userId]: remoteStream }));
+      const remoteStream = event.streams[0] || remoteCallStreamsRef.current.get(userId) || new MediaStream();
+      if (!event.streams[0] && !remoteStream.getTracks().includes(event.track)) remoteStream.addTrack(event.track);
+      remoteCallStreamsRef.current.set(userId, remoteStream);
+      setRemoteCallStreams((prev) => ({ ...prev, [userId]: remoteStream }));
     };
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
+      if (['failed', 'closed'].includes(peer.connectionState)) {
         peer.close();
         callPeerConnectionsRef.current.delete(userId);
+        remoteCallStreamsRef.current.delete(userId);
         setRemoteCallStreams((prev) => {
           const next = { ...prev };
           delete next[userId];
@@ -490,6 +550,7 @@ export default function App() {
     localCallStreamRef.current = null;
     setLocalCallStream(null);
     setRemoteCallStreams({});
+    remoteCallStreamsRef.current.clear();
     setCallActive(false);
     setIncomingCall(null);
     setCallDialogOpen(false);
@@ -542,6 +603,7 @@ export default function App() {
     setLocalShareStream(null);
     setShareActive(false);
     setRemoteStreams({});
+    remoteStreamsRef.current.clear();
     peerConnectionsRef.current.forEach((peer) => peer.close());
     peerConnectionsRef.current.clear();
     pendingIceRef.current.clear();
@@ -574,6 +636,7 @@ export default function App() {
         delete next[userId];
         return next;
       });
+      remoteStreamsRef.current.delete(userId);
     }
   }
 
@@ -586,7 +649,7 @@ export default function App() {
     }
 
     if (data.type === 'call-offer') {
-      setIncomingCall({ fromUserId: userId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: userId });
+      setIncomingCall({ fromUserId: userId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
       setCallDialogOpen(true);
       return;
     }
@@ -613,6 +676,7 @@ export default function App() {
         delete next[userId];
         return next;
       });
+      remoteCallStreamsRef.current.delete(userId);
       if (!callPeerConnectionsRef.current.size) stopCall(false);
     }
   }
@@ -657,10 +721,11 @@ export default function App() {
         rooms={rooms}
         activeRoomId={activeRoomId}
         messages={messages}
+        readByMessage={readByMessage}
         onSelectRoom={setActiveRoomId}
         onSend={sendMessage}
         onSendMedia={sendMedia}
-        mediaError={mediaError}
+        mediaError={mediaError || messageError}
         onCreateRoom={createRoom}
         statusText={statusText}
         isAdmin={me.is_admin}

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
-from app.models.entities import ChatRoomMember, User
+from app.models.entities import ChatRoomMember, Message, User
 from app.services.security import TokenError, decode_token
 from app.services.ws_manager import ws_manager
 
@@ -88,6 +88,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                             {
                                 'event': 'call:signal',
                                 'from_user_id': user.id,
+                                'from_username': user.username,
                                 'room_id': room_id,
                                 'data': data,
                             },
@@ -98,7 +99,44 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                         {
                             'event': 'call:signal',
                             'from_user_id': user.id,
+                            'from_username': user.username,
                             'data': data,
+                        },
+                    )
+            elif event == 'message:read':
+                room_id = incoming.get('room_id')
+                requested_ids = incoming.get('message_ids', [])
+                if not room_id or not isinstance(requested_ids, list):
+                    continue
+                membership = db.scalar(
+                    select(ChatRoomMember).where(
+                        ChatRoomMember.room_id == room_id,
+                        ChatRoomMember.user_id == user.id,
+                    )
+                )
+                if not membership:
+                    continue
+                message_ids = [str(message_id) for message_id in requested_ids[:100] if message_id]
+                if not message_ids:
+                    continue
+                readable_ids = list(
+                    db.scalars(
+                        select(Message.id).where(
+                            Message.room_id == room_id,
+                            Message.id.in_(message_ids),
+                        )
+                    ).all()
+                )
+                if readable_ids:
+                    await ws_manager.broadcast_users(
+                        _room_member_ids(db, room_id),
+                        {
+                            'event': 'message:read',
+                            'data': {
+                                'room_id': room_id,
+                                'message_ids': readable_ids,
+                                'reader_id': user.id,
+                            },
                         },
                     )
             elif event == 'typing:update':

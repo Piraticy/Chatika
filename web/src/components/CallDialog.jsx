@@ -91,6 +91,6 @@ function RemoteCallMedia({ userId, stream, video }) {
       <span>Participant {userId.slice(0, 6)}</span>
     </div>
   ) : (
-    <audio ref={mediaRef} autoPlay />
+    <audio ref={mediaRef} autoPlay playsInline />
   );
 }

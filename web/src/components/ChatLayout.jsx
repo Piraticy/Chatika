@@ -11,6 +11,7 @@ export default function ChatLayout({
   rooms,
   activeRoomId,
   messages,
+  readByMessage,
   onSelectRoom,
   onSend,
   onCreateRoom,
@@ -42,6 +43,7 @@ export default function ChatLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingError, setRecordingError] = useState('');
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const fileInputRef = useRef(null);
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
@@ -91,6 +93,12 @@ export default function ChatLayout({
     recorderRef.current?.stop();
     recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
+
+  useEffect(() => {
+    if (!recording) return undefined;
+    const timer = window.setInterval(() => setRecordingSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [recording]);
 
   function submitMessage(e) {
     e.preventDefault();
@@ -163,8 +171,10 @@ export default function ChatLayout({
         recorderStreamRef.current = null;
         recorderRef.current = null;
         setRecording(false);
+        setRecordingSeconds(0);
       };
       recorder.start();
+      setRecordingSeconds(0);
       setRecording(true);
     } catch (error) {
       setRecordingError(error.message || 'Microphone permission was not granted.');
@@ -318,7 +328,10 @@ export default function ChatLayout({
                   ))}
                 </div>
               </div>
-              <time>{new Date(m.created_at).toLocaleTimeString()}</time>
+              <div className="message-meta">
+                <time>{new Date(m.created_at).toLocaleTimeString()}</time>
+                {m.sender_id === me.id && <MessageStatus read={Boolean(readByMessage?.[m.id])} />}
+              </div>
             </article>
           ))}
           {typingText && <div className="typing-indicator">{typingText}</div>}
@@ -375,6 +388,14 @@ export default function ChatLayout({
             Send <span aria-hidden="true">↗</span>
           </button>
         </form>
+        {recording && (
+          <div className="recording-preview" role="status" aria-live="polite">
+            <span className="recording-indicator" />
+            <strong>Recording {formatDuration(recordingSeconds)}</strong>
+            <span className="recording-wave" aria-hidden="true">▂▅▃▆▄▇▃▅▂</span>
+            <button type="button" onClick={toggleRecording}>Stop</button>
+          </div>
+        )}
         {(recordingError || mediaError) && <div className="composer-error">{recordingError || mediaError}</div>}
       </main>
     </div>
@@ -387,6 +408,20 @@ function MessageMedia({ message }) {
   if (message.message_type === 'video') return <video className="message-video" src={url} controls playsInline preload="metadata" />;
   if (message.message_type === 'audio' || message.message_type === 'voice') return <audio className="message-audio" src={url} controls preload="metadata" />;
   return <a className="message-file" href={url} target="_blank" rel="noreferrer">Open shared file</a>;
+}
+
+function MessageStatus({ read }) {
+  return (
+    <span className={read ? 'message-status read' : 'message-status'} aria-label={read ? 'Opened' : 'Sent'} title={read ? 'Opened' : 'Sent'}>
+      <i />
+      {read && <i />}
+    </span>
+  );
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function ChatikaEmoji({ emoji }) {
