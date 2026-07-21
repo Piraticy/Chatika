@@ -56,7 +56,10 @@ def validate_refresh_session(db: Session, refresh_token: str) -> SessionToken:
         from app.services.security import verify_password
 
         if verify_password(refresh_token, session.refresh_token_hash):
-            if session.revoked_at is not None or session.expires_at < now:
+            expires_at = session.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if session.revoked_at is not None or expires_at < now:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh session expired or revoked')
             return session
 

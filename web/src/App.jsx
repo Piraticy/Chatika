@@ -274,8 +274,13 @@ export default function App() {
       setRefreshToken('');
       setMe(null);
       setRooms([]);
+      setActiveRoomId('');
       setMessages([]);
+      setPendingUsers([]);
+      setAdminUsers([]);
       setAdminOpen(false);
+      setInviteStatus(null);
+      setError('');
     }
   }
 
