@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -210,15 +211,19 @@ async def send_message(
                 DevicePushToken.is_active.is_(True),
             )
         ).all()
-        await push_service.send_to_tokens(
+        asyncio.create_task(push_service.send_to_tokens(
             [row.token for row in push_tokens],
             {
                 'event': 'message:new',
+                'title': f'New message from @{current_user.username}',
+                'body': message.text[:160] if message.text else 'You received a new message.',
+                'tag': f'chatika-message-{message.room_id}',
+                'url': '/',
                 'room_id': message.room_id,
                 'sender_id': message.sender_id,
                 'preview': message.text[:160] if message.text else 'New encrypted message',
             },
-        )
+        ))
 
     return MessageOut(
         id=message.id,

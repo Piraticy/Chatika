@@ -16,30 +16,32 @@ function notifyUpdateAvailable(registration) {
 }
 
 export function registerPwa() {
-  if (isStandalone()) return;
+  const standalone = isStandalone();
 
-  window.__chatikaInstall = async () => {
-    const promptEvent = window.__chatikaInstallPrompt;
-    if (!promptEvent) return false;
-    promptEvent.prompt();
-    const result = await promptEvent.userChoice;
-    window.__chatikaInstallPrompt = null;
-    return result.outcome === 'accepted';
-  };
+  if (!standalone) {
+    window.__chatikaInstall = async () => {
+      const promptEvent = window.__chatikaInstallPrompt;
+      if (!promptEvent) return false;
+      promptEvent.prompt();
+      const result = await promptEvent.userChoice;
+      window.__chatikaInstallPrompt = null;
+      return result.outcome === 'accepted';
+    };
 
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    window.__chatikaInstallPrompt = event;
-    notifyInstallAvailable({ browser: true });
-  });
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      window.__chatikaInstallPrompt = event;
+      notifyInstallAvailable({ browser: true });
+    });
 
-  window.addEventListener('appinstalled', () => {
-    window.__chatikaInstallPrompt = null;
-    window.dispatchEvent(new CustomEvent('chatika:install-complete'));
-  });
+    window.addEventListener('appinstalled', () => {
+      window.__chatikaInstallPrompt = null;
+      window.dispatchEvent(new CustomEvent('chatika:install-complete'));
+    });
 
-  if (isIos()) {
-    window.setTimeout(() => notifyInstallAvailable({ ios: true }), 1800);
+    if (isIos()) {
+      window.setTimeout(() => notifyInstallAvailable({ ios: true }), 1800);
+    }
   }
 
   if (!('serviceWorker' in navigator)) return;

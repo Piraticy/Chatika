@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chatika-shell-v3';
+const CACHE_NAME = 'chatika-shell-v4';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -22,6 +22,41 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch (_error) {
+    payload = { body: event.data?.text() || 'You have a new Chatika notification.' };
+  }
+
+  const title = payload.title || 'Chatika';
+  const options = {
+    body: payload.body || payload.preview || 'You have a new update.',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    tag: payload.tag || payload.event || 'chatika-update',
+    renotify: Boolean(payload.renotify),
+    data: { url: payload.url || '/' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => client.url.startsWith(self.location.origin));
+      if (existing) {
+        existing.navigate(targetUrl);
+        return existing.focus();
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {

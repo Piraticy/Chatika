@@ -1,4 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const remainder = (seconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${remainder}`;
+}
 
 export default function CallDialog({
   open,
@@ -8,13 +14,29 @@ export default function CallDialog({
   localStream,
   remoteStreams,
   error,
+  connectionStatus,
+  muted,
+  cameraOff,
   onStart,
   onAccept,
   onReject,
   onHangup,
-  onClose
+  onClose,
+  onToggleMute,
+  onToggleCamera
 }) {
   const localVideoRef = useRef(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      setElapsed(0);
+      return undefined;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
 
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
@@ -24,55 +46,64 @@ export default function CallDialog({
 
   const remoteEntries = Object.entries(remoteStreams || {});
   const callKind = incoming?.kind || kind;
+  const isVideo = callKind === 'video';
+  const status = incoming ? 'Incoming' : active ? connectionStatus || 'Connecting' : 'Ready';
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div className="modal-backdrop call-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="call-dialog" role="dialog" aria-modal="true" aria-labelledby="call-title">
-        <div className="dialog-heading">
+        <header className="call-dialog-header">
           <div>
-            <span className="eyebrow">ROOM CALL</span>
-            <h2 id="call-title">{incoming ? 'Incoming call' : `${callKind === 'video' ? 'Video' : 'Audio'} call`}</h2>
-            <p>{incoming ? `@${incoming.username || 'A participant'} is calling you.` : 'Private peer-to-peer calling with adaptive quality.'}</p>
+            <div className="call-kicker"><span className="live-pulse" /> ROOM CALL</div>
+            <h2 id="call-title">{incoming ? 'Incoming call' : `${isVideo ? 'Video' : 'Audio'} call`}</h2>
+            <p>{incoming ? `@${incoming.username || 'A participant'} is calling you.` : 'Private calling with adaptive quality and secure peer-to-peer media.'}</p>
           </div>
+          <div className={`call-status-chip ${status.toLowerCase()}`}><span className="status-dot" />{status}{active && <b>{formatDuration(elapsed)}</b>}</div>
           {!active && !incoming && <button className="icon-button" type="button" onClick={onClose} aria-label="Close call dialog">×</button>}
-        </div>
+        </header>
 
         {error && <div className="notice-card error-card">{error}</div>}
 
         {incoming ? (
           <div className="incoming-call-card">
-            <div className="call-avatar">{(incoming.username || '?').slice(0, 1).toUpperCase()}</div>
+            <div className="call-avatar call-avatar-large">{(incoming.username || '?').slice(0, 1).toUpperCase()}</div>
             <strong>@{incoming.username || 'participant'}</strong>
-            <span>{incoming.kind === 'video' ? 'Video call' : 'Audio call'}</span>
+            <span>{isVideo ? 'Video call' : 'Audio call'} · Chatika room</span>
+            <div className="incoming-wave" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div>
           </div>
         ) : (
-          <div className={callKind === 'video' ? 'call-stage video-call-stage' : 'call-stage audio-call-stage'}>
-            {callKind === 'video' && localStream && <video ref={localVideoRef} className="call-video local-call-video" autoPlay muted playsInline />}
-            {callKind === 'audio' && <div className="call-placeholder"><span className="call-glyph">◉</span><strong>Audio call</strong></div>}
+          <div className={isVideo ? 'call-stage video-call-stage' : 'call-stage audio-call-stage'}>
+            <div className="call-stage-toolbar"><span>{remoteEntries.length ? `${remoteEntries.length} participant${remoteEntries.length === 1 ? '' : 's'}` : 'Private room'}</span><span>{status}</span></div>
+            {isVideo && localStream && <video ref={localVideoRef} className={`call-video local-call-video ${cameraOff ? 'is-hidden' : ''}`} autoPlay muted playsInline />}
+            {!isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>☎</span></div><strong>Ready when you are</strong><small>Audio is protected in this room</small></div>}
+            {isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>▣</span></div><strong>Waiting for participants</strong><small>They will appear here when they join</small></div>}
             {remoteEntries.map(([userId, stream]) => (
-              <RemoteCallMedia key={userId} userId={userId} stream={stream} video={callKind === 'video'} />
+              <RemoteCallMedia key={userId} userId={userId} stream={stream} video={isVideo} />
             ))}
-            {!remoteEntries.length && <span className="call-status">Waiting for participants to join…</span>}
           </div>
         )}
 
-        <div className="dialog-actions call-actions">
+        <div className="call-control-bar">
           {incoming ? (
             <>
-              <button type="button" className="primary-button" onClick={onAccept}>Answer</button>
-              <button type="button" className="danger-button" onClick={onReject}>Decline</button>
+              <button type="button" className="call-control accept-control" onClick={onAccept}><span>☎</span>Answer</button>
+              <button type="button" className="call-control decline-control" onClick={onReject}><span>×</span>Decline</button>
             </>
           ) : active ? (
-            <button type="button" className="danger-button" onClick={onHangup}>End call</button>
+            <>
+              <button type="button" className={`call-control ${muted ? 'control-on' : ''}`} onClick={onToggleMute}><span>{muted ? '×' : '●'}</span>{muted ? 'Unmute' : 'Mute'}</button>
+              {isVideo && <button type="button" className={`call-control ${cameraOff ? 'control-on' : ''}`} onClick={onToggleCamera}><span>{cameraOff ? '×' : '▣'}</span>{cameraOff ? 'Camera on' : 'Camera off'}</button>}
+              <button type="button" className="call-control end-control" onClick={onHangup}><span>×</span>End</button>
+            </>
           ) : (
             <>
-              <button type="button" className="primary-button" onClick={() => onStart('audio')}>Start audio call</button>
-              <button type="button" className="primary-button secondary-call-button" onClick={() => onStart('video')}>Start video call</button>
+              <button type="button" className="call-control accept-control" onClick={() => onStart('audio')}><span>☎</span>Start audio</button>
+              <button type="button" className="call-control video-control" onClick={() => onStart('video')}><span>▣</span>Start video</button>
+              <button type="button" className="quiet-button" onClick={onClose}>Not now</button>
             </>
           )}
-          {!active && !incoming && <button type="button" className="quiet-button" onClick={onClose}>Not now</button>}
         </div>
-        <p className="compatibility-note">Calls work in current browsers over HTTPS on desktop, Android, and iOS. Microphone and camera permission is required.</p>
+        <p className="compatibility-note">Works over HTTPS on current desktop, Android, and iOS browsers. Allow microphone/camera access when prompted. TURN servers are recommended for restrictive networks.</p>
       </section>
     </div>
   );
@@ -85,12 +116,21 @@ function RemoteCallMedia({ userId, stream, video }) {
     if (mediaRef.current) mediaRef.current.srcObject = stream;
   }, [stream]);
 
-  return video ? (
-    <div className="remote-call-media">
-      <video ref={mediaRef} className="call-video" autoPlay playsInline />
-      <span>Participant {userId.slice(0, 6)}</span>
+  if (video) {
+    return (
+      <div className="remote-call-media">
+        <video ref={mediaRef} className="call-video" autoPlay playsInline />
+        <span>@{userId.slice(0, 6)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="audio-participant">
+      <div className="call-avatar">{userId.slice(0, 1).toUpperCase()}</div>
+      <strong>@{userId.slice(0, 8)}</strong>
+      <small>Connected</small>
+      <audio ref={mediaRef} autoPlay playsInline />
     </div>
-  ) : (
-    <audio ref={mediaRef} autoPlay playsInline />
   );
 }

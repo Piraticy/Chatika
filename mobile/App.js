@@ -15,12 +15,23 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000/api/v1';
 const ACCESS_KEY = 'chatika_mobile_access';
 const REFRESH_KEY = 'chatika_mobile_refresh';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true
+  })
+});
 
 async function api(path, { method = 'GET', token, body } = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -127,6 +138,32 @@ export default function App() {
     if (!token) return;
     hydrate(token).catch(() => tryRefresh());
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !Device.isDevice) return;
+    registerPushToken(token).catch(() => undefined);
+  }, [token]);
+
+  async function registerPushToken(currentToken) {
+    const permissions = await Notifications.getPermissionsAsync();
+    let permission = permissions.status;
+    if (permission !== 'granted') {
+      permission = (await Notifications.requestPermissionsAsync()).status;
+    }
+    if (permission !== 'granted') return;
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+    const pushToken = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    await api('/push/register-token', {
+      method: 'POST',
+      token: currentToken,
+      body: {
+        platform: Platform.OS,
+        token: pushToken.data,
+        device_name: `${Platform.OS} · Chatika app`
+      }
+    });
+  }
 
   useEffect(() => {
     if (!token || !activeRoomId) return;

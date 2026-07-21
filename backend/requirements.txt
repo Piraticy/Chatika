@@ -5,6 +5,7 @@ alembic==1.14.0
 psycopg[binary]==3.2.13
 redis==5.2.1
 httpx==0.28.1
+pywebpush==2.0.3
 pydantic-settings==2.7.0
 python-jose[cryptography]==3.3.0
 passlib==1.7.4

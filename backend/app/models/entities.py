@@ -109,6 +109,6 @@ class DevicePushToken(Base, UUIDTimeMixin):
 
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     platform: Mapped[str] = mapped_column(String(20))
-    token: Mapped[str] = mapped_column(String(255), index=True)
+    token: Mapped[str] = mapped_column(String(4000), index=True)
     device_name: Mapped[str] = mapped_column(String(120), default='Unknown Device')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

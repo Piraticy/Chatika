@@ -23,6 +23,8 @@ export default function ChatLayout({
   typingUsers,
   onReact,
   onLogout,
+  notificationStatus,
+  onEnableNotifications,
   onOpenAdmin,
   dataSaver,
   onToggleDataSaver,
@@ -227,6 +229,16 @@ export default function ChatLayout({
         </div>
 
         <div className="sidebar-label"><span>YOUR ROOMS</span><span>{rooms.length} total</span></div>
+
+        {notificationStatus !== 'on' && (
+          <button className="notification-prompt" type="button" onClick={onEnableNotifications} disabled={notificationStatus === 'loading'}>
+            <span className="notification-prompt-icon">⌁</span>
+            <span>
+              <strong>{notificationStatus === 'loading' ? 'Enabling alerts…' : 'Enable notifications'}</strong>
+              <small>{notificationStatus && notificationStatus !== 'off' && notificationStatus !== 'loading' ? notificationStatus : 'Get messages and calls while Chatika is closed.'}</small>
+            </span>
+          </button>
+        )}
 
         <form onSubmit={submitRoom} className="new-room">
           <input name="name" placeholder="New room name" required />

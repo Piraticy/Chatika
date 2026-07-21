@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     push_provider: str = 'none'
     push_webhook_url: Optional[str] = None
     push_request_timeout_seconds: float = 5.0
+    vapid_public_key: Optional[str] = None
+    vapid_private_key: Optional[str] = None
+    vapid_claims_email: Optional[str] = None
 
     force_turn: bool = False
     ice_servers: list[dict[str, Any]] = Field(

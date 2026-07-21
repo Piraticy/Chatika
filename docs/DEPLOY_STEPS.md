@@ -33,6 +33,8 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
    - `REDIS_URL` = your redis URL (optional but recommended)
    - `FORCE_TURN` = `false` initially
    - `ICE_SERVERS` = JSON array (see below)
+   - `PUSH_PROVIDER` = `multi` after generating VAPID keys (Web Push + Expo Android/iOS)
+   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` = your Web Push credentials
 5. Deploy the blueprint. Open the service root URL for the UI; the API remains available under `/api/v1`.
 
 The service health check is available at `/api/v1/health`. The root URL serves the Chatika UI from the same service. When changing web code, run `npm run build:render` from `web/` before deploying.
@@ -86,9 +88,12 @@ npm run start
 - Redeploy API.
 - Websocket fanout across instances becomes active automatically.
 
-## 7) Optional push pipeline
-- Keep `PUSH_PROVIDER=none` for now.
-- To enable push bridge:
+## 7) Push notifications
+- Generate one VAPID key pair and keep the private key only in Render environment variables.
+- Set `PUSH_PROVIDER=multi`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL=mailto:admin@your-domain.com`.
+- In Chatika, each signed-in device selects **Enable notifications** once. The browser subscription is then stored securely and used for messages, calls, and screen-share alerts.
+- Installed iOS/iPadOS PWAs support Web Push on current versions; Android and desktop Chromium browsers are supported when notifications are allowed.
+- The existing provider-agnostic bridge remains available:
   - `PUSH_PROVIDER=webhook`
   - `PUSH_WEBHOOK_URL=https://<your-push-worker>/send`
 

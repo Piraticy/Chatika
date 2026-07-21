@@ -7,6 +7,7 @@ import ChatLayout from './components/ChatLayout';
 import ScreenShareDialog from './components/ScreenShareDialog';
 import { api, API_URL, uploadFile } from './lib/api';
 import { createSocket } from './lib/socket';
+import { enableWebPush } from './lib/push';
 
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
@@ -43,6 +44,10 @@ export default function App() {
   const [localCallStream, setLocalCallStream] = useState(null);
   const [remoteCallStreams, setRemoteCallStreams] = useState({});
   const [callError, setCallError] = useState('');
+  const [callConnectionStatus, setCallConnectionStatus] = useState('Ready');
+  const [callMuted, setCallMuted] = useState(false);
+  const [callCameraOff, setCallCameraOff] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState('off');
   const [inviteStatus, setInviteStatus] = useState(null);
   const [mediaError, setMediaError] = useState('');
   const [messageError, setMessageError] = useState('');
@@ -58,6 +63,7 @@ export default function App() {
   const callPeerConnectionsRef = useRef(new Map());
   const callPendingIceRef = useRef(new Map());
   const remoteCallStreamsRef = useRef(new Map());
+  const callRetryTimersRef = useRef(new Map());
   const readReceiptTimerRef = useRef(null);
 
   const isAuthed = Boolean(token && me);
@@ -477,7 +483,16 @@ export default function App() {
       setRemoteCallStreams((prev) => ({ ...prev, [userId]: remoteStream }));
     };
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(peer.connectionState)) {
+      if (peer.connectionState === 'connected') setCallConnectionStatus('Live');
+      if (peer.connectionState === 'disconnected') {
+        setCallConnectionStatus('Reconnecting');
+        scheduleCallRetry(userId, kind);
+      }
+      if (peer.connectionState === 'failed') {
+        setCallConnectionStatus('Reconnecting');
+        scheduleCallRetry(userId, kind, true);
+      }
+      if (peer.connectionState === 'closed') {
         peer.close();
         callPeerConnectionsRef.current.delete(userId);
         remoteCallStreamsRef.current.delete(userId);
@@ -499,12 +514,19 @@ export default function App() {
       setCallError('Calls are not supported in this browser. Use the latest browser over HTTPS.');
       return;
     }
+    if (!window.isSecureContext) {
+      setCallError('Calls require a secure HTTPS connection. Open the hosted Chatika address, not HTTP.');
+      return;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
       localCallStreamRef.current = stream;
       setLocalCallStream(stream);
       setCallKind(kind);
+      setCallMuted(false);
+      setCallCameraOff(false);
+      setCallConnectionStatus('Connecting');
       setCallActive(true);
       setCallDialogOpen(true);
 
@@ -516,9 +538,12 @@ export default function App() {
         sendCallSignal(userId, { type: 'call-offer', kind, description: offer });
       }));
     } catch (error) {
-      if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') setCallError(error.message || 'Unable to start the call.');
-      else setCallError('Microphone or camera permission was not granted.');
+      const message = error.name !== 'AbortError' && error.name !== 'NotAllowedError'
+        ? error.message || 'Unable to start the call.'
+        : 'Microphone or camera permission was not granted.';
       stopCall(false);
+      setCallError(message);
+      setCallDialogOpen(true);
     }
   }
 
@@ -531,6 +556,9 @@ export default function App() {
       localCallStreamRef.current = stream;
       setLocalCallStream(stream);
       setCallKind(call.kind);
+      setCallMuted(false);
+      setCallCameraOff(false);
+      setCallConnectionStatus('Connecting');
       setCallActive(true);
       setCallDialogOpen(true);
       const peer = await createCallPeerConnection(call.fromUserId, call.kind);
@@ -568,6 +596,54 @@ export default function App() {
     callPeerConnectionsRef.current.forEach((peer) => peer.close());
     callPeerConnectionsRef.current.clear();
     callPendingIceRef.current.clear();
+    callRetryTimersRef.current.forEach((timer) => clearTimeout(timer));
+    callRetryTimersRef.current.clear();
+    setCallConnectionStatus('Ready');
+    setCallMuted(false);
+    setCallCameraOff(false);
+  }
+
+  async function renegotiateCallPeer(userId, kind) {
+    const peer = callPeerConnectionsRef.current.get(userId);
+    if (!peer || peer.signalingState !== 'stable' || !callActive) return;
+    try {
+      const offer = await peer.createOffer({ iceRestart: true });
+      await peer.setLocalDescription(offer);
+      sendCallSignal(userId, { type: 'call-offer', kind, description: offer, restart: true });
+    } catch (_error) {
+      setCallError('The connection could not be restored. Please try the call again.');
+    }
+  }
+
+  function scheduleCallRetry(userId, kind, immediate = false) {
+    if (callRetryTimersRef.current.has(userId)) return;
+    const timer = window.setTimeout(() => {
+      callRetryTimersRef.current.delete(userId);
+      renegotiateCallPeer(userId, kind);
+    }, immediate ? 100 : 1200);
+    callRetryTimersRef.current.set(userId, timer);
+  }
+
+  function toggleCallMute() {
+    const next = !callMuted;
+    localCallStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; });
+    setCallMuted(next);
+  }
+
+  function toggleCallCamera() {
+    const next = !callCameraOff;
+    localCallStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = !next; });
+    setCallCameraOff(next);
+  }
+
+  async function enableNotifications() {
+    setNotificationStatus('loading');
+    try {
+      await enableWebPush(token);
+      setNotificationStatus('on');
+    } catch (pushError) {
+      setNotificationStatus(pushError.message || 'Notifications could not be enabled.');
+    }
   }
 
   async function startShare() {
@@ -660,6 +736,15 @@ export default function App() {
     }
 
     if (data.type === 'call-offer') {
+      const existingPeer = callPeerConnectionsRef.current.get(userId);
+      if (existingPeer && callActive) {
+        await existingPeer.setRemoteDescription(data.description);
+        const answer = await existingPeer.createAnswer();
+        await existingPeer.setLocalDescription(answer);
+        sendCallSignal(userId, { type: 'call-answer', description: answer });
+        setCallConnectionStatus('Connecting');
+        return;
+      }
       setIncomingCall({ fromUserId: userId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
       setCallDialogOpen(true);
       return;
@@ -669,6 +754,7 @@ export default function App() {
       const peer = callPeerConnectionsRef.current.get(userId);
       if (!peer) return;
       await peer.setRemoteDescription(data.description);
+      setCallConnectionStatus('Connecting');
     } else if (data.type === 'call-ice') {
       const peer = callPeerConnectionsRef.current.get(userId);
       if (!peer) {
@@ -746,6 +832,8 @@ export default function App() {
         typingUsers={typingUsers}
         onReact={reactToMessage}
         onLogout={logout}
+        notificationStatus={notificationStatus}
+        onEnableNotifications={enableNotifications}
         onOpenAdmin={() => {
           setAdminOpen(true);
           loadAdminUsers();
@@ -787,6 +875,9 @@ export default function App() {
         localStream={localCallStream}
         remoteStreams={remoteCallStreams}
         error={callError}
+        connectionStatus={callConnectionStatus}
+        muted={callMuted}
+        cameraOff={callCameraOff}
         onStart={startCall}
         onAccept={acceptIncomingCall}
         onReject={rejectIncomingCall}
@@ -794,6 +885,8 @@ export default function App() {
           stopCall();
           setCallDialogOpen(false);
         }}
+        onToggleMute={toggleCallMute}
+        onToggleCamera={toggleCallCamera}
         onClose={() => setCallDialogOpen(false)}
       />
       <AdminPanel
