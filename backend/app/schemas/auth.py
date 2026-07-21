@@ -6,13 +6,13 @@ from pydantic import BaseModel, Field
 
 class RegisterInput(BaseModel):
     username: str = Field(min_length=3, max_length=40)
-    phone_number: str = Field(min_length=7, max_length=20)
     password: str = Field(min_length=8, max_length=120)
     device_name: str = Field(default='Unknown Device', max_length=120)
+    phone_number: Optional[str] = Field(default=None, min_length=7, max_length=20)
 
 
 class LoginInput(BaseModel):
-    phone_number: str
+    username: str = Field(min_length=3, max_length=40)
     password: str
     device_name: str = Field(default='Unknown Device', max_length=120)
 
@@ -34,7 +34,7 @@ class TokenPair(BaseModel):
 class UserMe(BaseModel):
     id: str
     username: str
-    phone_number: str
+    phone_number: Optional[str]
     is_admin: bool
     is_approved: bool
     is_online: bool

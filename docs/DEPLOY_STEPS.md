@@ -9,17 +9,24 @@
 
 ## 1) Supabase setup
 1. Create a new Supabase project.
-2. Open `Project Settings -> Database` and copy the connection string.
-3. Replace `[YOUR-PASSWORD]` with your DB password.
-4. Save this as `DATABASE_URL` for Render.
+2. Click `Connect` in the Supabase dashboard and select the **Session pooler** connection string.
+3. Copy the complete URI, replace `[YOUR-PASSWORD]` with the database password, and URL-encode special characters in that password.
+4. Save this as `DATABASE_URL` in Render without changing the pooler hostname or username.
 
-## 2) Render API setup
-1. In Render dashboard, click `New +` then `Web Service`.
+The Render/Supabase URI should have this shape:
+```text
+postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Use the Session pooler URI on port `5432`, not a manually assembled URL. An error containing
+`ENOTFOUND tenant/user` means the pooler hostname and `postgres.<PROJECT_REF>` username do not belong together, or the project is no longer available.
+
+## 2) Render API + web setup
+1. In Render dashboard, click `New +` then `Blueprint`.
 2. Connect your GitHub repo and select this repository.
-3. Set:
-   - Root Directory: `backend`
-   - Runtime: `Docker`
-   - Branch: `main` (or your deployment branch)
+3. Apply the root `render.yaml`. It creates:
+   - `chatika-api`: Docker FastAPI service from `backend`
+   - `chatika-web`: free static site from `web`
 4. Add environment variables:
    - `DATABASE_URL` = Supabase connection string
    - `AUTO_CREATE_SCHEMA` = `false`
@@ -28,7 +35,9 @@
    - `REDIS_URL` = your redis URL (optional but recommended)
    - `FORCE_TURN` = `false` initially
    - `ICE_SERVERS` = JSON array (see below)
-5. Deploy service.
+5. Deploy the blueprint. The web build already points at `https://chatika-api.onrender.com/api/v1`; update `VITE_API_URL` if you rename the API service.
+
+The Render API URL is available at `/api/v1/health`; the static web site gets its own `onrender.com` URL.
 
 ### ICE_SERVERS example
 Use a JSON array string in Render env var:
@@ -51,7 +60,7 @@ alembic upgrade head
 ```
 No manual DB migration step is needed if deployment command remains unchanged.
 
-## 4) Cloudflare Pages web deploy
+## 4) Cloudflare Pages web deploy (alternative)
 1. In Cloudflare dashboard, open `Workers & Pages`.
 2. Click `Create` then `Pages` then `Connect to Git`.
 3. Choose this repository.
@@ -66,7 +75,8 @@ No manual DB migration step is needed if deployment command remains unchanged.
 ## 5) Mobile setup
 1. In `mobile/.env` set:
    - `EXPO_PUBLIC_API_URL=https://<your-render-service>.onrender.com/api/v1`
-2. Start and test:
+2. For production OTA updates, run `eas update:configure`, link the Expo project, and publish updates with the same `runtimeVersion`.
+3. Start and test:
 ```bash
 cd mobile
 npm install

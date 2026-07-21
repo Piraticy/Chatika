@@ -7,9 +7,10 @@
 - Realtime: WebSocket events + WebRTC signaling hooks
 
 ## Feature Coverage in this Foundation
-- Username/phone registration with unique constraints
+- Username-first registration/login with optional legacy phone data
 - Long-lived sessions via refresh tokens (so users do not keep logging in)
 - Admin approval channel (approve/remove users)
+- Admin global directory (all registered accounts, online status, approve/remove controls)
 - Presence tracking (online + last seen)
 - Room-based messaging
 - Call room signaling (group-capable)

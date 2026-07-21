@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { APP_CREDIT, APP_VERSION } from '../lib/version';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', '🔥'];
@@ -17,13 +18,20 @@ export default function ChatLayout({
   onApprove,
   onTyping,
   typingUsers,
-  onReact
+  onReact,
+  onLogout,
+  onOpenAdmin,
+  dataSaver,
+  onToggleDataSaver,
+  shareActive,
+  onShareScreen
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
   const composerRef = useRef(null);
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const groupedMessages = useMemo(() => {
     const grouped = [];
@@ -107,19 +115,23 @@ export default function ChatLayout({
 
   return (
     <div className="chat-root">
-      <aside className="sidebar glass">
+      <button className="mobile-menu-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
+      <aside className={sidebarOpen ? 'sidebar glass open' : 'sidebar glass'}>
         <div className="sidebar-head">
           <img src="/logo.svg" alt="Chatika" className="mini-logo" />
           <div className="identity">
             <h2>@{me.username}</h2>
             <small>{statusText}</small>
           </div>
+          <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation">×</button>
         </div>
 
+        <div className="sidebar-label"><span>YOUR ROOMS</span><span>{rooms.length} total</span></div>
+
         <form onSubmit={submitRoom} className="new-room">
-          <input name="name" placeholder="Create room name" required />
-          <input name="participant_ids" placeholder="Participant IDs (comma separated)" />
-          <button type="submit">Create Room</button>
+          <input name="name" placeholder="New room name" required />
+          <input name="participant_ids" placeholder="Participant IDs · optional" />
+          <button type="submit"><span>＋</span> Create room</button>
         </form>
 
         <div className="room-list">
@@ -137,29 +149,46 @@ export default function ChatLayout({
 
         {isAdmin && (
           <section className="admin-box">
-            <h3>Admin approvals</h3>
+            <div className="sidebar-label"><span>ADMIN QUEUE</span><span>{pendingUsers.length}</span></div>
             {pendingUsers.map((u) => (
               <div className="pending-user" key={u.id}>
                 <span>{u.username}</span>
                 <button onClick={() => onApprove(u.id)}>Approve</button>
               </div>
             ))}
+            <button className="admin-open-button" type="button" onClick={onOpenAdmin}>Open admin control</button>
           </section>
         )}
+        <div className="sidebar-foot">
+          <span>{APP_CREDIT} · v{APP_VERSION}</span>
+          <button type="button" onClick={onLogout}>Log out</button>
+        </div>
       </aside>
 
       <main className="thread glass">
         <header className="thread-head">
-          <div>
-            <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
-            <small>{activeRoom ? (activeRoom.is_group ? 'Group call ready' : 'Private chat ready') : ''}</small>
+          <div className="thread-title-wrap">
+            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">☰</button>
+            <div>
+              <span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP ROOM' : 'DIRECT ROOM') : 'CHATIKA'}</span>
+              <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
+              <small>{activeRoom ? (activeRoom.is_group ? `${activeRoom.participant_ids?.length || 1} people · ready to connect` : 'Private and encrypted by design') : 'Pick a room to begin'}</small>
+            </div>
           </div>
-          <div className="avatar-stack" aria-hidden="true">
-            <span>A</span>
-            <span>C</span>
-            <span>K</span>
+          <div className="thread-actions">
+            <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId}>
+              <span className="share-icon">▣</span><span>{shareActive ? 'Sharing' : 'Share screen'}</span>
+            </button>
+            <button type="button" className="icon-button" onClick={onToggleDataSaver} aria-label="Toggle data saver" title="Toggle data saver">
+              {dataSaver ? '◒' : '◓'}
+            </button>
+            <div className="avatar-stack" aria-hidden="true">
+              <span>A</span><span>C</span><span>K</span>
+            </div>
           </div>
         </header>
+
+        <div className="thread-notice"><span className="status-dot" /> {dataSaver ? 'Data saver on · lighter media and fewer messages loaded' : 'High quality mode · adaptive to your connection'}</div>
 
         <section className="messages" ref={messagesRef}>
           {!orderedMessages.length && (
@@ -214,7 +243,7 @@ export default function ChatLayout({
           </button>
           <input
             name="text"
-            placeholder="Write a message..."
+            placeholder={activeRoomId ? 'Write a message...' : 'Select a room first'}
             disabled={!activeRoomId}
             value={draft}
             onChange={(e) => {
@@ -233,7 +262,7 @@ export default function ChatLayout({
             </div>
           )}
           <button type="submit" disabled={!activeRoomId}>
-            Send
+            Send <span aria-hidden="true">↗</span>
           </button>
         </form>
       </main>

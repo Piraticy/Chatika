@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
@@ -15,6 +15,23 @@ router = APIRouter(prefix='/admin', tags=['admin'])
 def pending_users(_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> list[dict]:
     users = db.scalars(select(User).where(User.is_approved.is_(False))).all()
     return [{'id': u.id, 'username': u.username, 'phone_number': u.phone_number} for u in users]
+
+
+@router.get('/users')
+def list_users(_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> list[dict]:
+    users = db.scalars(select(User).order_by(User.created_at.desc())).all()
+    return [
+        {
+            'id': user.id,
+            'username': user.username,
+            'is_admin': user.is_admin,
+            'is_approved': user.is_approved,
+            'is_online': user.is_online,
+            'last_seen_at': user.last_seen_at.isoformat() if user.last_seen_at else None,
+            'created_at': user.created_at.isoformat() if user.created_at else None,
+        }
+        for user in users
+    ]
 
 
 @router.post('/approve-user')
@@ -40,9 +57,12 @@ def remove_user(data: RemoveUserInput, _admin: User = Depends(get_current_admin)
 
 @router.post('/add-user')
 def add_user(data: AddUserInput, _admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> dict:
-    existing = db.scalar(select(User).where((User.username == data.username) | (User.phone_number == data.phone_number)))
+    existing_filters = [User.username == data.username]
+    if data.phone_number:
+        existing_filters.append(User.phone_number == data.phone_number)
+    existing = db.scalar(select(User).where(or_(*existing_filters)))
     if existing:
-        raise HTTPException(status_code=409, detail='Username or phone number already exists')
+        raise HTTPException(status_code=409, detail='Username already exists')
 
     user = User(
         username=data.username,

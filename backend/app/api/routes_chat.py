@@ -62,7 +62,13 @@ def create_room(data: CreateRoomInput, current_user: User = Depends(get_current_
         db.add(ChatRoomMember(room_id=room.id, user_id=user_id, role='owner' if user_id == current_user.id else 'member'))
     db.commit()
 
-    return RoomOut(id=room.id, name=room.name, is_group=room.is_group, created_by=room.created_by)
+    return RoomOut(
+        id=room.id,
+        name=room.name,
+        is_group=room.is_group,
+        created_by=room.created_by,
+        participant_ids=participant_ids,
+    )
 
 
 @router.get('/rooms', response_model=list[RoomOut])
@@ -72,7 +78,21 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     if not room_ids:
         return []
     rooms = db.scalars(select(ChatRoom).where(ChatRoom.id.in_(room_ids))).all()
-    return [RoomOut(id=r.id, name=r.name, is_group=r.is_group, created_by=r.created_by) for r in rooms]
+    memberships_by_room: dict[str, list[str]] = {room_id: [] for room_id in room_ids}
+    all_members = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id.in_(room_ids))).all()
+    for membership in all_members:
+        memberships_by_room.setdefault(membership.room_id, []).append(membership.user_id)
+
+    return [
+        RoomOut(
+            id=r.id,
+            name=r.name,
+            is_group=r.is_group,
+            created_by=r.created_by,
+            participant_ids=memberships_by_room.get(r.id, []),
+        )
+        for r in rooms
+    ]
 
 
 @router.post('/messages', response_model=MessageOut)
@@ -148,14 +168,22 @@ async def send_message(
 
 
 @router.get('/rooms/{room_id}/messages', response_model=list[MessageOut])
-def list_messages(room_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[MessageOut]:
+def list_messages(
+    room_id: str,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MessageOut]:
     membership = db.scalar(
         select(ChatRoomMember).where(ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == current_user.id)
     )
     if not membership:
         raise HTTPException(status_code=403, detail='Not a member of this room')
 
-    messages = db.scalars(select(Message).where(Message.room_id == room_id).order_by(Message.created_at.desc()).limit(100)).all()
+    safe_limit = max(1, min(limit, 100))
+    messages = db.scalars(
+        select(Message).where(Message.room_id == room_id).order_by(Message.created_at.desc()).limit(safe_limit)
+    ).all()
     return [
         MessageOut(
             id=m.id,

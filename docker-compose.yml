@@ -11,6 +11,7 @@ services:
       - DATABASE_URL=sqlite:///./chatika.db
       - REDIS_URL=redis://redis:6379/0
       - AUTO_CREATE_SCHEMA=false
+      - PORT=8000
       - ICE_SERVERS=[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:coturn:3478"],"username":"chatika","credential":"chatika-turn-secret"}]
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     depends_on:
@@ -22,6 +23,8 @@ services:
     working_dir: /workspace
     volumes:
       - ./web:/workspace
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"

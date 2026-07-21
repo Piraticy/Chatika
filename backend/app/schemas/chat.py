@@ -14,6 +14,7 @@ class RoomOut(BaseModel):
     name: str
     is_group: bool
     created_by: Optional[str]
+    participant_ids: list[str] = Field(default_factory=list)
 
 
 class SendMessageInput(BaseModel):

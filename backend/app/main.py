@@ -28,6 +28,16 @@ app.add_middleware(
 )
 
 
+@app.get('/', include_in_schema=False)
+def root() -> dict[str, str]:
+    return {
+        'name': settings.app_name,
+        'status': 'ok',
+        'health': f'{settings.api_prefix}/health',
+        'docs': '/docs',
+    }
+
+
 @app.on_event('startup')
 async def on_startup() -> None:
     if settings.auto_create_schema:

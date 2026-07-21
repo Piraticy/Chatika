@@ -6,8 +6,10 @@ A unique, privacy-focused, cross-device chat room platform foundation for Web + 
 - Cross-platform architecture (`backend`, `web`, `mobile`)
 - Real-time messaging and presence (`online` + `last seen` enforced server-side)
 - Redis-ready multi-instance websocket fanout
-- Registration/login with long-lived session model
+- Username-first registration/login with long-lived session model
+- Self-service registration with instant access and explicit logout on web/mobile
 - Admin approval/removal flow for users
+- Admin global user directory with online, approval, and removal controls
 - Group-ready call room signaling endpoints
 - TURN/STUN delivery endpoint (`/realtime/ice-config`) for call setup
 - E2EE-ready payload path (ciphertext + per-user key bundle exchange)
@@ -16,6 +18,7 @@ A unique, privacy-focused, cross-device chat room platform foundation for Web + 
 - Media storage preference: `device` or `app`
 - Distinct custom brand assets (`web/public/logo.svg`, `web/public/favicon.svg`)
 - Mobile-first full-screen friendly UX and PWA standalone mode on web
+- Install prompt and service-worker update flow for the web app
 
 ## Repository Structure
 - `backend/`: FastAPI API and WebSocket realtime server
@@ -58,11 +61,14 @@ npm run start
 docker compose up --build
 ```
 
+Open the local web app at `http://localhost:5173`. The API is available at `http://localhost:8000`, with health status at `http://localhost:8000/api/v1/health`.
+
 ## API Highlights
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `GET /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/chat/rooms`
 - `GET /api/v1/chat/rooms`
 - `POST /api/v1/chat/messages`
@@ -78,6 +84,7 @@ docker compose up --build
 - `POST /api/v1/calls/start`
 - `POST /api/v1/calls/join`
 - `POST /api/v1/admin/approve-user`
+- `GET /api/v1/admin/users`
 - `POST /api/v1/admin/remove-user`
 - `GET /api/v1/realtime/ice-config`
 - `WS /api/v1/realtime/ws?token=<access_token>`
@@ -89,6 +96,10 @@ docker compose up --build
 4. Add abuse controls: per-user rate limits, spam scoring, audit log.
 5. Add formal end-to-end protocol (Double Ratchet) in clients.
 6. Add observability stack (Sentry, metrics, traces, alerts).
+
+## Free Hosting
+
+The root `render.yaml` provisions the FastAPI API and the Vite static web app on Render. Use Supabase Postgres for durable free starter storage, set the secrets in Render, and deploy the Blueprint. See `docs/DEPLOY_STEPS.md` for the complete setup.
 
 ## Security Notes
 - Replace `.env` secrets in production.

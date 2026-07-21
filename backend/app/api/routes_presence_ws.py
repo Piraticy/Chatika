@@ -71,7 +71,28 @@ async def ws_endpoint(websocket: WebSocket) -> None:
             if event == 'call:signal':
                 target_user_id = incoming.get('target_user_id')
                 data = incoming.get('data', {})
-                if target_user_id:
+                room_id = incoming.get('room_id')
+                if room_id:
+                    membership = db.scalar(
+                        select(ChatRoomMember).where(
+                            ChatRoomMember.room_id == room_id,
+                            ChatRoomMember.user_id == user.id,
+                        )
+                    )
+                    if membership:
+                        targets = [uid for uid in _room_member_ids(db, room_id) if uid != user.id]
+                        if target_user_id:
+                            targets = [uid for uid in targets if uid == target_user_id]
+                        await ws_manager.broadcast_users(
+                            targets,
+                            {
+                                'event': 'call:signal',
+                                'from_user_id': user.id,
+                                'room_id': room_id,
+                                'data': data,
+                            },
+                        )
+                elif target_user_id:
                     await ws_manager.send_user(
                         target_user_id,
                         {

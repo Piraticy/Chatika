@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, validate_refresh_session
@@ -29,9 +29,12 @@ def _token_pair(db: Session, user: User, device_name: str) -> TokenPair:
 
 @router.post('/register', response_model=TokenPair)
 def register(data: RegisterInput, db: Session = Depends(get_db)) -> TokenPair:
-    existing = db.scalar(select(User).where((User.username == data.username) | (User.phone_number == data.phone_number)))
+    existing_filters = [User.username == data.username]
+    if data.phone_number:
+        existing_filters.append(User.phone_number == data.phone_number)
+    existing = db.scalar(select(User).where(or_(*existing_filters)))
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username or phone number already exists')
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username already exists')
 
     first_user = db.scalar(select(func.count(User.id))) == 0
     user = User(
@@ -39,21 +42,18 @@ def register(data: RegisterInput, db: Session = Depends(get_db)) -> TokenPair:
         phone_number=data.phone_number,
         password_hash=hash_password(data.password),
         is_admin=first_user,
-        is_approved=first_user,
+        is_approved=True,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    if not user.is_approved:
-        raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail='Registered. Wait for admin approval.')
 
     return _token_pair(db, user, data.device_name)
 
 
 @router.post('/login', response_model=TokenPair)
 def login(data: LoginInput, db: Session = Depends(get_db)) -> TokenPair:
-    user = db.scalar(select(User).where(User.phone_number == data.phone_number))
+    user = db.scalar(select(User).where(User.username == data.username))
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
     if not user.is_approved:

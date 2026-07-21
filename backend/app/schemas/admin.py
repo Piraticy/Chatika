@@ -11,5 +11,5 @@ class RemoveUserInput(BaseModel):
 
 class AddUserInput(BaseModel):
     username: str
-    phone_number: str
     password: str
+    phone_number: str | None = None
