@@ -19,6 +19,8 @@ A unique, privacy-focused, cross-device chat room platform foundation for Web + 
 - Distinct custom brand assets (`web/public/logo.svg`, `web/public/favicon.svg`)
 - Mobile-first full-screen friendly UX and PWA standalone mode on web
 - Install prompt and service-worker update flow for the web app
+- Chatika-original emoji set with shareable `:chatika_*:` message codes
+- Username-based room invitations with live delivery to connected users
 
 ## Repository Structure
 - `backend/`: FastAPI API and WebSocket realtime server
@@ -71,6 +73,7 @@ Open the local web app at `http://localhost:5173`. The API is available at `http
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/chat/rooms`
 - `GET /api/v1/chat/rooms`
+- `POST /api/v1/chat/rooms/{room_id}/invite`
 - `POST /api/v1/chat/messages`
 - `GET /api/v1/chat/rooms/{room_id}/messages`
 - `PUT /api/v1/keys/me`
@@ -88,6 +91,12 @@ Open the local web app at `http://localhost:5173`. The API is available at `http
 - `POST /api/v1/admin/remove-user`
 - `GET /api/v1/realtime/ice-config`
 - `WS /api/v1/realtime/ws?token=<access_token>`
+
+## Admin Access
+
+The first account registered on a fresh database is automatically the administrator. Log in with that account, open the mobile menu or sidebar, and select **Open admin control**. The panel shows the global user directory, pending approvals, online status, and account removal controls. Additional admins must be granted through the database or a future role-management flow.
+
+To invite someone, select a room, enter their approved username in **Invite to room**, and tap **Invite**. They receive the room immediately when connected; otherwise it appears the next time they log in.
 
 ## Production Steps Next
 1. Swap webhook push bridge to direct FCM/APNs workers.

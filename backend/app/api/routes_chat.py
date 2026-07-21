@@ -1,14 +1,14 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateRoomInput, MessageOut, MessageReactionInput, RoomOut, SendMessageInput
+from app.schemas.chat import CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, SendMessageInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -18,6 +18,16 @@ router = APIRouter(prefix='/chat', tags=['chat'])
 def _room_member_ids(db: Session, room_id: str) -> list[str]:
     members = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id == room_id)).all()
     return [m.user_id for m in members]
+
+
+def _room_out(db: Session, room: ChatRoom) -> RoomOut:
+    return RoomOut(
+        id=room.id,
+        name=room.name,
+        is_group=room.is_group,
+        created_by=room.created_by,
+        participant_ids=_room_member_ids(db, room.id),
+    )
 
 
 def _parse_reactions(message: Message) -> dict[str, list[str]]:
@@ -69,6 +79,63 @@ def create_room(data: CreateRoomInput, current_user: User = Depends(get_current_
         created_by=room.created_by,
         participant_ids=participant_ids,
     )
+
+
+@router.post('/rooms/{room_id}/invite', response_model=RoomOut)
+async def invite_member(
+    room_id: str,
+    data: InviteMemberInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RoomOut:
+    membership = db.scalar(
+        select(ChatRoomMember).where(
+            ChatRoomMember.room_id == room_id,
+            ChatRoomMember.user_id == current_user.id,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail='Not a member of this room')
+
+    room = db.get(ChatRoom, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail='Room not found')
+
+    username = data.username.strip().lstrip('@')
+    invitee = db.scalar(select(User).where(func.lower(User.username) == username.lower()))
+    if not invitee or not invitee.is_approved:
+        raise HTTPException(status_code=404, detail='Approved username not found')
+    if invitee.id == current_user.id:
+        raise HTTPException(status_code=400, detail='You are already in this room')
+
+    existing = db.scalar(
+        select(ChatRoomMember).where(
+            ChatRoomMember.room_id == room_id,
+            ChatRoomMember.user_id == invitee.id,
+        )
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail='That user is already in this room')
+
+    if len(_room_member_ids(db, room_id)) + 1 > 2:
+        room.is_group = True
+    db.add(ChatRoomMember(room_id=room_id, user_id=invitee.id, role='member'))
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+
+    room_out = _room_out(db, room)
+    await ws_manager.send_user(
+        invitee.id,
+        {
+            'event': 'room:invite',
+            'data': {
+                'room': room_out.model_dump(),
+                'invited_by': current_user.username,
+            },
+        },
+    )
+    return room_out
 
 
 @router.get('/rooms', response_model=list[RoomOut])

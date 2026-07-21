@@ -34,6 +34,7 @@ export default function App() {
   const [localShareStream, setLocalShareStream] = useState(null);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [shareError, setShareError] = useState('');
+  const [inviteStatus, setInviteStatus] = useState(null);
   const socketRef = useRef(null);
   const typingTimersRef = useRef({});
   const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
@@ -107,6 +108,8 @@ export default function App() {
       onEvent: (evt) => {
         if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
           setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
+        } else if (evt.event === 'room:invite' && evt.data?.room) {
+          setRooms((prev) => [evt.data.room, ...prev.filter((room) => room.id !== evt.data.room.id)]);
         } else if (evt.event === 'message:reaction' && evt.data.room_id === activeRoomId) {
           setMessages((prev) =>
             prev.map((msg) => (msg.id === evt.data.message_id ? { ...msg, reaction_users: evt.data.reaction_users || {} } : msg))
@@ -183,6 +186,22 @@ export default function App() {
     });
     setRooms((prev) => [room, ...prev]);
     setActiveRoomId(room.id);
+  }
+
+  async function inviteUser(username) {
+    if (!activeRoomId) return;
+    setInviteStatus({ text: 'Inviting…', error: false });
+    try {
+      const room = await api(`/chat/rooms/${activeRoomId}/invite`, {
+        method: 'POST',
+        token,
+        body: { username }
+      });
+      setRooms((prev) => prev.map((item) => (item.id === room.id ? room : item)));
+      setInviteStatus({ text: `@${username.replace(/^@/, '')} joined this room`, error: false });
+    } catch (error) {
+      setInviteStatus({ text: error.message, error: true });
+    }
   }
 
   async function sendMessage(text) {
@@ -448,6 +467,8 @@ export default function App() {
         dataSaver={dataSaver}
         onToggleDataSaver={() => setDataSaver((value) => !value)}
         shareActive={shareActive}
+        onInvite={inviteUser}
+        inviteStatus={inviteStatus}
         onShareScreen={() => {
           setShareError('');
           setShareDialogOpen(true);

@@ -9,6 +9,10 @@ class CreateRoomInput(BaseModel):
     participant_ids: list[str] = Field(default_factory=list)
 
 
+class InviteMemberInput(BaseModel):
+    username: str = Field(min_length=3, max_length=40)
+
+
 class RoomOut(BaseModel):
     id: str
     name: str
@@ -43,4 +47,4 @@ class MessageOut(BaseModel):
 
 class MessageReactionInput(BaseModel):
     room_id: str
-    emoji: str = Field(min_length=1, max_length=8)
+    emoji: str = Field(min_length=1, max_length=24)

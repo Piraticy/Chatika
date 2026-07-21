@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
+import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
-const REACTION_EMOJIS = ['👍', '❤️', '🔥'];
+const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
 
 export default function ChatLayout({
   me,
@@ -24,7 +25,9 @@ export default function ChatLayout({
   dataSaver,
   onToggleDataSaver,
   shareActive,
-  onShareScreen
+  onShareScreen,
+  onInvite,
+  inviteStatus
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
@@ -96,6 +99,15 @@ export default function ChatLayout({
     e.currentTarget.reset();
   }
 
+  function submitInvite(e) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const username = String(form.get('username') || '').trim();
+    if (!username || !activeRoomId) return;
+    onInvite(username);
+    e.currentTarget.reset();
+  }
+
   function addEmoji(emoji) {
     const next = `${draft}${emoji}`;
     setDraft(next);
@@ -111,6 +123,14 @@ export default function ChatLayout({
         mine: Array.isArray(users) ? users.includes(me.id) : false
       }))
       .filter((item) => item.count > 0);
+  }
+
+  function renderText(text, keyPrefix = 'chatika-text') {
+    return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => {
+      const emoji = findChatikaEmoji(part);
+      if (!emoji) return part;
+      return <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} />;
+    });
   }
 
   return (
@@ -132,6 +152,15 @@ export default function ChatLayout({
           <input name="name" placeholder="New room name" required />
           <input name="participant_ids" placeholder="Participant IDs · optional" />
           <button type="submit"><span>＋</span> Create room</button>
+        </form>
+
+        <form onSubmit={submitInvite} className="invite-form">
+          <div className="sidebar-label"><span>INVITE TO ROOM</span><span>{activeRoomId ? 'ready' : 'select a room'}</span></div>
+          <div className="invite-row">
+            <input name="username" placeholder="@username" disabled={!activeRoomId} required />
+            <button type="submit" disabled={!activeRoomId}>Invite</button>
+          </div>
+          {inviteStatus && <small className={inviteStatus.error ? 'invite-status error' : 'invite-status'}>{inviteStatus.text}</small>}
         </form>
 
         <div className="room-list">
@@ -201,7 +230,7 @@ export default function ChatLayout({
           {groupedMessages.map((m) => (
             <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
               {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : 'Member'}</span>}
-              <p>{m.text || `[${m.message_type}]`}</p>
+              <p>{m.text ? renderText(m.text, m.id) : `[${m.message_type}]`}</p>
               <div className="reaction-row">
                 <div className="reaction-buttons">
                   {REACTION_EMOJIS.map((emoji) => (
@@ -212,14 +241,14 @@ export default function ChatLayout({
                       onClick={() => onReact?.(m.id, emoji)}
                       aria-label={`React ${emoji}`}
                     >
-                      {emoji}
+                      {findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}
                     </button>
                   ))}
                 </div>
                 <div className="reaction-summary">
                   {reactionSummary(m.reaction_users).map((item) => (
                     <span key={`${m.id}-${item.emoji}`} className={item.mine ? 'reaction-chip mine' : 'reaction-chip'}>
-                      {item.emoji} {item.count}
+                      {renderText(item.emoji, `${m.id}-reaction`)} {item.count}
                     </span>
                   ))}
                 </div>
@@ -254,11 +283,22 @@ export default function ChatLayout({
           />
           {emojiOpen && (
             <div className="emoji-picker" role="dialog" aria-label="Emoji picker">
-              {QUICK_EMOJIS.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${emoji}`}>
-                  {emoji}
-                </button>
-              ))}
+              <span className="emoji-picker-label">Chatika originals</span>
+              <div className="chatika-emoji-grid">
+                {CHATIKA_EMOJIS.map((emoji) => (
+                  <button key={emoji.code} type="button" className="chatika-emoji-choice" onClick={() => addEmoji(emoji.code)} aria-label={`Add ${emoji.label}`} title={emoji.label}>
+                    <ChatikaEmoji emoji={emoji} />
+                  </button>
+                ))}
+              </div>
+              <span className="emoji-picker-label">Quick picks</span>
+              <div className="quick-emoji-grid">
+                {QUICK_EMOJIS.map((emoji) => (
+                  <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${emoji}`}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <button type="submit" disabled={!activeRoomId}>
@@ -267,5 +307,13 @@ export default function ChatLayout({
         </form>
       </main>
     </div>
+  );
+}
+
+function ChatikaEmoji({ emoji }) {
+  return (
+    <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label} title={emoji.label}>
+      {emoji.glyph}
+    </span>
   );
 }
