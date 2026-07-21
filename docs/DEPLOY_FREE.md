@@ -1,7 +1,7 @@
 # Free Deployment Paths
 
 ## Option A (Best free start)
-- Backend API + web app: Render free services from the root `render.yaml`.
+- Backend API + web app: one Render free Docker service from the root `render.yaml`.
 - Database: Supabase Postgres is the recommended persistent free database.
 - Alternative web host: Cloudflare Pages free with `web` as the project root.
 

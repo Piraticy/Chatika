@@ -3,8 +3,8 @@ services:
     name: chatika-api
     runtime: docker
     plan: free
-    rootDir: backend
-    dockerfilePath: ./Dockerfile
+    rootDir: .
+    dockerfilePath: ./backend/Dockerfile
     healthCheckPath: /api/v1/health
     autoDeploy: true
     envVars:
@@ -18,13 +18,3 @@ services:
         sync: false
       - key: BACKUP_ENCRYPTION_KEY
         sync: false
-  - type: web
-    name: chatika-web
-    runtime: static
-    rootDir: web
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    autoDeploy: true
-    envVars:
-      - key: VITE_API_URL
-        value: https://chatika-api.onrender.com/api/v1

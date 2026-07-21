@@ -24,9 +24,7 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
 ## 2) Render API + web setup
 1. In Render dashboard, click `New +` then `Blueprint`.
 2. Connect your GitHub repo and select this repository.
-3. Apply the root `render.yaml`. It creates:
-   - `chatika-api`: Docker FastAPI service from `backend`
-   - `chatika-web`: free static site from `web`
+3. Apply the root `render.yaml`. It creates one free Docker service containing both the FastAPI API and the Vite web UI.
 4. Add environment variables:
    - `DATABASE_URL` = Supabase connection string
    - `AUTO_CREATE_SCHEMA` = `false`
@@ -35,9 +33,9 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
    - `REDIS_URL` = your redis URL (optional but recommended)
    - `FORCE_TURN` = `false` initially
    - `ICE_SERVERS` = JSON array (see below)
-5. Deploy the blueprint. The web build already points at `https://chatika-api.onrender.com/api/v1`; update `VITE_API_URL` if you rename the API service.
+5. Deploy the blueprint. Open the service root URL for the UI; the API remains available under `/api/v1`.
 
-The Render API URL is available at `/api/v1/health`; the static web site gets its own `onrender.com` URL.
+The service health check is available at `/api/v1/health`. The root URL serves the Chatika UI from the same service.
 
 ### ICE_SERVERS example
 Use a JSON array string in Render env var:
