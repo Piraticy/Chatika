@@ -1,0 +1,17 @@
+{
+  "name": "Chatika",
+  "short_name": "Chatika",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A1221",
+  "theme_color": "#0A1221",
+  "description": "Private real-time messaging, calls, media and backups.",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "256x256",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

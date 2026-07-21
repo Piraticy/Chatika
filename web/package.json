@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:render": "npm run build && mkdir -p ../backend/web_dist && cp -R dist/. ../backend/web_dist/",
     "preview": "vite preview"
   },
   "dependencies": {

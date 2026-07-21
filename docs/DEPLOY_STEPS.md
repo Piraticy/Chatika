@@ -24,7 +24,7 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
 ## 2) Render API + web setup
 1. In Render dashboard, click `New +` then `Blueprint`.
 2. Connect your GitHub repo and select this repository.
-3. Apply the root `render.yaml`. It creates one free Docker service containing both the FastAPI API and the Vite web UI.
+3. Apply the root `render.yaml`. It creates one free Docker service containing both the FastAPI API and the prebuilt Vite web UI.
 4. Add environment variables:
    - `DATABASE_URL` = Supabase connection string
    - `AUTO_CREATE_SCHEMA` = `false`
@@ -35,7 +35,7 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
    - `ICE_SERVERS` = JSON array (see below)
 5. Deploy the blueprint. Open the service root URL for the UI; the API remains available under `/api/v1`.
 
-The service health check is available at `/api/v1/health`. The root URL serves the Chatika UI from the same service.
+The service health check is available at `/api/v1/health`. The root URL serves the Chatika UI from the same service. When changing web code, run `npm run build:render` from `web/` before deploying.
 
 ### ICE_SERVERS example
 Use a JSON array string in Render env var:
