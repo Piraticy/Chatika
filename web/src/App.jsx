@@ -58,6 +58,7 @@ export default function App() {
   const callPeerConnectionsRef = useRef(new Map());
   const callPendingIceRef = useRef(new Map());
   const remoteCallStreamsRef = useRef(new Map());
+  const readReceiptTimerRef = useRef(null);
 
   const isAuthed = Boolean(token && me);
 
@@ -125,7 +126,6 @@ export default function App() {
         if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
           if (evt.data.sender_id === me.id) return;
           setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
-          sendReadReceipts([evt.data]);
         } else if (evt.event === 'message:read' && evt.data.room_id === activeRoomId && evt.data.reader_id !== me.id) {
           setReadByMessage((prev) => {
             const next = { ...prev };
@@ -175,7 +175,7 @@ export default function App() {
           }
         }
       },
-      onOpen: () => sendReadReceipts(messages)
+      onOpen: () => scheduleReadReceipts(messages)
     });
     socketRef.current = socket;
 
@@ -243,8 +243,19 @@ export default function App() {
     socketRef.current.send(JSON.stringify({ event: 'message:read', room_id: activeRoomId, message_ids: messageIds }));
   }
 
+  function scheduleReadReceipts(candidateMessages = messages) {
+    if (readReceiptTimerRef.current) window.clearTimeout(readReceiptTimerRef.current);
+    readReceiptTimerRef.current = window.setTimeout(() => {
+      sendReadReceipts(candidateMessages);
+      readReceiptTimerRef.current = null;
+    }, 120);
+  }
+
   useEffect(() => {
-    sendReadReceipts(messages);
+    scheduleReadReceipts(messages);
+    return () => {
+      if (readReceiptTimerRef.current) window.clearTimeout(readReceiptTimerRef.current);
+    };
   }, [messages, activeRoomId, me?.id]);
 
   async function sendMessage(text) {
@@ -380,7 +391,7 @@ export default function App() {
       token,
       body: { room_id: activeRoomId, emoji }
     });
-    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? updated : msg)));
+    setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, ...updated } : msg)));
   }
 
   async function getIceServers() {

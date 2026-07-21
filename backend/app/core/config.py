@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     app_instance_id: str = 'chatika-instance-local'
 
     database_url: str = 'sqlite:///./chatika.db'
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
     auto_create_schema: bool = True
     jwt_secret: str = 'change-me-in-production'
     jwt_algorithm: str = 'HS256'

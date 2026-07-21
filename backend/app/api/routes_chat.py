@@ -44,11 +44,12 @@ def _parse_reactions(message: Message) -> dict[str, list[str]]:
     return clean
 
 
-def _serialize_message(message: Message) -> dict:
+def _serialize_message(message: Message, sender_username: str | None = None) -> dict:
     return {
         'id': message.id,
         'room_id': message.room_id,
         'sender_id': message.sender_id,
+        'sender_username': sender_username,
         'message_type': message.message_type,
         'is_encrypted': message.is_encrypted,
         'sender_key_id': message.sender_key_id,
@@ -197,7 +198,7 @@ async def send_message(
     db.commit()
     db.refresh(message)
 
-    payload = {'event': 'message:new', 'data': _serialize_message(message)}
+    payload = {'event': 'message:new', 'data': _serialize_message(message, current_user.username)}
     recipient_ids = _room_member_ids(db, message.room_id)
     await ws_manager.broadcast_users(recipient_ids, payload)
 
@@ -223,6 +224,7 @@ async def send_message(
         id=message.id,
         room_id=message.room_id,
         sender_id=message.sender_id,
+        sender_username=current_user.username,
         message_type=message.message_type,
         is_encrypted=message.is_encrypted,
         sender_key_id=message.sender_key_id,
@@ -251,11 +253,17 @@ def list_messages(
     messages = db.scalars(
         select(Message).where(Message.room_id == room_id).order_by(Message.created_at.desc()).limit(safe_limit)
     ).all()
+    sender_ids = {message.sender_id for message in messages}
+    sender_usernames = {
+        user.id: user.username
+        for user in db.scalars(select(User).where(User.id.in_(sender_ids))).all()
+    } if sender_ids else {}
     return [
         MessageOut(
             id=m.id,
             room_id=m.room_id,
             sender_id=m.sender_id,
+            sender_username=sender_usernames.get(m.sender_id),
             message_type=m.message_type,
             is_encrypted=m.is_encrypted,
             sender_key_id=m.sender_key_id,
@@ -288,6 +296,7 @@ async def react_to_message(
     message = db.get(Message, message_id)
     if not message or message.room_id != data.room_id:
         raise HTTPException(status_code=404, detail='Message not found in this room')
+    sender = db.get(User, message.sender_id)
 
     reactions = _parse_reactions(message)
     emoji = data.emoji.strip()
@@ -324,6 +333,7 @@ async def react_to_message(
         id=message.id,
         room_id=message.room_id,
         sender_id=message.sender_id,
+        sender_username=sender.username if sender else None,
         message_type=message.message_type,
         is_encrypted=message.is_encrypted,
         sender_key_id=message.sender_key_id,

@@ -55,7 +55,10 @@ class WSManager:
                 continue
 
             user_id = channel.replace(settings.redis_channel_prefix, '', 1)
-            envelope = json.loads(raw_data)
+            try:
+                envelope = json.loads(raw_data)
+            except (TypeError, json.JSONDecodeError):
+                continue
             if envelope.get('origin') == settings.app_instance_id:
                 continue
 
@@ -74,12 +77,18 @@ class WSManager:
                 self._user_connections.pop(user_id, None)
 
     async def _send_local(self, user_id: str, payload: dict[str, Any]) -> None:
-        stale_connections = []
-        for ws in self._user_connections.get(user_id, set()):
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                stale_connections.append(ws)
+        connections = tuple(self._user_connections.get(user_id, set()))
+        if not connections:
+            return
+        results = await asyncio.gather(
+            *(websocket.send_json(payload) for websocket in connections),
+            return_exceptions=True,
+        )
+        stale_connections = [
+            websocket
+            for websocket, result in zip(connections, results)
+            if isinstance(result, Exception)
+        ]
         for ws in stale_connections:
             self.disconnect(user_id, ws)
 
@@ -91,8 +100,11 @@ class WSManager:
             await self._redis.publish(channel, json.dumps(envelope))
 
     async def broadcast_users(self, user_ids: list[str], payload: dict) -> None:
-        for user_id in user_ids:
-            await self.send_user(user_id, payload)
+        unique_user_ids = list(dict.fromkeys(user_ids))
+        await asyncio.gather(
+            *(self.send_user(user_id, payload) for user_id in unique_user_ids),
+            return_exceptions=True,
+        )
 
 
 ws_manager = WSManager()

@@ -41,6 +41,7 @@ export default function ChatLayout({
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [reactionMessageId, setReactionMessageId] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recordingError, setRecordingError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -84,6 +85,7 @@ export default function ChatLayout({
       if (!composerRef.current.contains(event.target)) {
         setEmojiOpen(false);
       }
+      if (!event.target.closest?.('.msg')) setReactionMessageId(null);
     }
     document.addEventListener('click', onDocumentClick);
     return () => document.removeEventListener('click', onDocumentClick);
@@ -190,6 +192,17 @@ export default function ChatLayout({
         mine: Array.isArray(users) ? users.includes(me.id) : false
       }))
       .filter((item) => item.count > 0);
+  }
+
+  function handleMessageClick(event, messageId) {
+    if (event.target.closest?.('button, a, video, audio, input')) return;
+    setReactionMessageId((current) => (current === messageId ? null : messageId));
+  }
+
+  function chooseReaction(event, messageId, emoji) {
+    event.stopPropagation();
+    onReact?.(messageId, emoji);
+    setReactionMessageId(null);
   }
 
   function renderText(text, keyPrefix = 'chatika-text') {
@@ -301,25 +314,21 @@ export default function ChatLayout({
           )}
 
           {groupedMessages.map((m) => (
-            <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
-              {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : 'Member'}</span>}
+            <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'} onClick={(event) => handleMessageClick(event, m.id)}>
+              {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : m.sender_username ? `@${m.sender_username}` : 'Member'}</span>}
               {m.media_url && <MessageMedia message={m} />}
               {m.text && <p>{renderText(m.text, m.id)}</p>}
               {!m.text && !m.media_url && <p>[{m.message_type}]</p>}
-              <div className="reaction-row">
-                <div className="reaction-buttons">
+              {reactionMessageId === m.id && (
+                <div className="message-reaction-picker" onClick={(event) => event.stopPropagation()} role="toolbar" aria-label="Choose a reaction">
                   {REACTION_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      className="reaction-btn"
-                      onClick={() => onReact?.(m.id, emoji)}
-                      aria-label={`React ${emoji}`}
-                    >
+                    <button key={emoji} type="button" onClick={(event) => chooseReaction(event, m.id, emoji)} aria-label={`React ${emoji}`}>
                       {findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}
                     </button>
                   ))}
                 </div>
+              )}
+              {reactionSummary(m.reaction_users).length > 0 && <div className="reaction-row">
                 <div className="reaction-summary">
                   {reactionSummary(m.reaction_users).map((item) => (
                     <span key={`${m.id}-${item.emoji}`} className={item.mine ? 'reaction-chip mine' : 'reaction-chip'}>
@@ -327,7 +336,7 @@ export default function ChatLayout({
                     </span>
                   ))}
                 </div>
-              </div>
+              </div>}
               <div className="message-meta">
                 <time>{new Date(m.created_at).toLocaleTimeString()}</time>
                 {m.sender_id === me.id && <MessageStatus read={Boolean(readByMessage?.[m.id])} />}

@@ -35,6 +35,7 @@ class MessageOut(BaseModel):
     id: str
     room_id: str
     sender_id: str
+    sender_username: Optional[str] = None
     message_type: str
     is_encrypted: bool
     sender_key_id: Optional[str]

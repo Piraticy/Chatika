@@ -119,17 +119,17 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 message_ids = [str(message_id) for message_id in requested_ids[:100] if message_id]
                 if not message_ids:
                     continue
-                readable_ids = list(
-                    db.scalars(
-                        select(Message.id).where(
-                            Message.room_id == room_id,
-                            Message.id.in_(message_ids),
-                        )
-                    ).all()
-                )
-                if readable_ids:
+                readable_messages = db.scalars(
+                    select(Message).where(
+                        Message.room_id == room_id,
+                        Message.id.in_(message_ids),
+                    )
+                ).all()
+                readable_ids = [message.id for message in readable_messages]
+                owner_ids = list(dict.fromkeys(message.sender_id for message in readable_messages))
+                if readable_ids and owner_ids:
                     await ws_manager.broadcast_users(
-                        _room_member_ids(db, room_id),
+                        owner_ids,
                         {
                             'event': 'message:read',
                             'data': {
