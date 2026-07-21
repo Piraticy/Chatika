@@ -6,6 +6,17 @@ import { resolveMediaUrl } from '../lib/api';
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
 
+function formatLastSeen(value) {
+  if (!value) return 'Last seen unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Last seen unavailable';
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (elapsedMinutes < 1) return 'Last seen just now';
+  if (elapsedMinutes < 60) return `Last seen ${elapsedMinutes}m ago`;
+  if (elapsedMinutes < 1440) return `Last seen ${Math.floor(elapsedMinutes / 60)}h ago`;
+  return `Last seen ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
 export default function ChatLayout({
   me,
   rooms,
@@ -38,6 +49,19 @@ export default function ChatLayout({
   mediaError
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
+  const activeOthers = useMemo(
+    () => (activeRoom?.participants || []).filter((participant) => participant.id !== me.id),
+    [activeRoom, me.id]
+  );
+  const activePresenceText = useMemo(() => {
+    if (!activeRoom) return 'Pick a room to begin';
+    if (!activeRoom.is_group && activeOthers[0]) {
+      const participant = activeOthers[0];
+      return participant.is_online ? `@${participant.username} · Online now` : `@${participant.username} · ${formatLastSeen(participant.last_seen_at)}`;
+    }
+    const onlineCount = activeOthers.filter((participant) => participant.is_online).length;
+    return `${onlineCount} online · ${activeOthers.length || 1} participant${activeOthers.length === 1 ? '' : 's'}`;
+  }, [activeRoom, activeOthers]);
   const messagesRef = useRef(null);
   const composerRef = useRef(null);
   const [draft, setDraft] = useState('');
@@ -263,7 +287,7 @@ export default function ChatLayout({
               onClick={() => onSelectRoom(room.id)}
             >
               <span className="room-name">{room.name}</span>
-              <small>{room.is_group ? 'Group' : 'Direct'}</small>
+              <small>{room.is_group ? 'Group' : room.participants?.find((participant) => participant.id !== me.id)?.is_online ? 'Online' : 'Offline'}</small>
             </button>
           ))}
         </div>
@@ -293,7 +317,7 @@ export default function ChatLayout({
             <div>
               <span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP ROOM' : 'DIRECT ROOM') : 'CHATIKA'}</span>
               <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
-              <small>{activeRoom ? (activeRoom.is_group ? `${activeRoom.participant_ids?.length || 1} people · ready to connect` : 'Private and encrypted by design') : 'Pick a room to begin'}</small>
+              <small>{activePresenceText}</small>
             </div>
           </div>
           <div className="thread-actions">

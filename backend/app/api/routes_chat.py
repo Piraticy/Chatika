@@ -9,7 +9,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, SendMessageInput
+from app.schemas.chat import CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -21,13 +21,33 @@ def _room_member_ids(db: Session, room_id: str) -> list[str]:
     return [m.user_id for m in members]
 
 
+def _room_participants(db: Session, room_id: str) -> list[RoomParticipantOut]:
+    member_ids = _room_member_ids(db, room_id)
+    if not member_ids:
+        return []
+    users = db.scalars(select(User).where(User.id.in_(member_ids))).all()
+    users_by_id = {user.id: user for user in users}
+    return [
+        RoomParticipantOut(
+            id=user.id,
+            username=user.username,
+            is_online=user.is_online,
+            last_seen_at=user.last_seen_at,
+        )
+        for user_id in member_ids
+        if (user := users_by_id.get(user_id))
+    ]
+
+
 def _room_out(db: Session, room: ChatRoom) -> RoomOut:
+    participants = _room_participants(db, room.id)
     return RoomOut(
         id=room.id,
         name=room.name,
         is_group=room.is_group,
         created_by=room.created_by,
-        participant_ids=_room_member_ids(db, room.id),
+        participant_ids=[participant.id for participant in participants],
+        participants=participants,
     )
 
 
@@ -74,13 +94,7 @@ def create_room(data: CreateRoomInput, current_user: User = Depends(get_current_
         db.add(ChatRoomMember(room_id=room.id, user_id=user_id, role='owner' if user_id == current_user.id else 'member'))
     db.commit()
 
-    return RoomOut(
-        id=room.id,
-        name=room.name,
-        is_group=room.is_group,
-        created_by=room.created_by,
-        participant_ids=participant_ids,
-    )
+    return _room_out(db, room)
 
 
 @router.post('/rooms/{room_id}/invite', response_model=RoomOut)
@@ -132,7 +146,7 @@ async def invite_member(
         {
             'event': 'room:invite',
             'data': {
-                'room': room_out.model_dump(),
+                'room': room_out.model_dump(mode='json'),
                 'invited_by': current_user.username,
             },
         },
@@ -147,21 +161,7 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     if not room_ids:
         return []
     rooms = db.scalars(select(ChatRoom).where(ChatRoom.id.in_(room_ids))).all()
-    memberships_by_room: dict[str, list[str]] = {room_id: [] for room_id in room_ids}
-    all_members = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id.in_(room_ids))).all()
-    for membership in all_members:
-        memberships_by_room.setdefault(membership.room_id, []).append(membership.user_id)
-
-    return [
-        RoomOut(
-            id=r.id,
-            name=r.name,
-            is_group=r.is_group,
-            created_by=r.created_by,
-            participant_ids=memberships_by_room.get(r.id, []),
-        )
-        for r in rooms
-    ]
+    return [_room_out(db, room) for room in rooms]
 
 
 @router.post('/messages', response_model=MessageOut)

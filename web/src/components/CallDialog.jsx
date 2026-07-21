@@ -15,6 +15,8 @@ export default function CallDialog({
   remoteStreams,
   error,
   connectionStatus,
+  targetLabel,
+  participantNames,
   muted,
   cameraOff,
   onStart,
@@ -33,10 +35,11 @@ export default function CallDialog({
       setElapsed(0);
       return undefined;
     }
-    const startedAt = Date.now();
+    if (connectionStatus !== 'Live') return undefined;
+    const startedAt = Date.now() - (elapsed * 1000);
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, connectionStatus]);
 
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
@@ -48,6 +51,11 @@ export default function CallDialog({
   const callKind = incoming?.kind || kind;
   const isVideo = callKind === 'video';
   const status = incoming ? 'Incoming' : active ? connectionStatus || 'Connecting' : 'Ready';
+  const callDescription = incoming
+    ? `@${incoming.username || 'A participant'} is calling you.`
+    : active
+      ? `${status === 'Live' ? 'Connected with' : 'Calling'} ${targetLabel || 'room participants'}.`
+      : 'Private calling with adaptive quality and secure peer-to-peer media.';
 
   return (
     <div className="modal-backdrop call-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -56,9 +64,9 @@ export default function CallDialog({
           <div>
             <div className="call-kicker"><span className="live-pulse" /> ROOM CALL</div>
             <h2 id="call-title">{incoming ? 'Incoming call' : `${isVideo ? 'Video' : 'Audio'} call`}</h2>
-            <p>{incoming ? `@${incoming.username || 'A participant'} is calling you.` : 'Private calling with adaptive quality and secure peer-to-peer media.'}</p>
+            <p>{callDescription}</p>
           </div>
-          <div className={`call-status-chip ${status.toLowerCase()}`}><span className="status-dot" />{status}{active && <b>{formatDuration(elapsed)}</b>}</div>
+          <div className={`call-status-chip ${status.toLowerCase()}`}><span className="status-dot" />{status}{active && status === 'Live' && <b>{formatDuration(elapsed)}</b>}</div>
           {!active && !incoming && <button className="icon-button" type="button" onClick={onClose} aria-label="Close call dialog">×</button>}
         </header>
 
@@ -73,12 +81,12 @@ export default function CallDialog({
           </div>
         ) : (
           <div className={isVideo ? 'call-stage video-call-stage' : 'call-stage audio-call-stage'}>
-            <div className="call-stage-toolbar"><span>{remoteEntries.length ? `${remoteEntries.length} participant${remoteEntries.length === 1 ? '' : 's'}` : 'Private room'}</span><span>{status}</span></div>
+            <div className="call-stage-toolbar"><span>{targetLabel || 'Private room'}</span><span>{status}</span></div>
             {isVideo && localStream && <video ref={localVideoRef} className={`call-video local-call-video ${cameraOff ? 'is-hidden' : ''}`} autoPlay muted playsInline />}
-            {!isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>☎</span></div><strong>Ready when you are</strong><small>Audio is protected in this room</small></div>}
-            {isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>▣</span></div><strong>Waiting for participants</strong><small>They will appear here when they join</small></div>}
+            {!isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>☎</span></div><strong>{status === 'Connecting' ? `Calling ${targetLabel || 'participant'}` : 'Ready when you are'}</strong><small>{status === 'Connecting' ? 'Waiting for them to answer' : 'Audio is protected in this room'}</small></div>}
+            {isVideo && !remoteEntries.length && <div className="call-placeholder"><div className="call-glyph"><span>▣</span></div><strong>{status === 'Connecting' ? `Calling ${targetLabel || 'participant'}` : 'Waiting for participants'}</strong><small>They will appear here when they join</small></div>}
             {remoteEntries.map(([userId, stream]) => (
-              <RemoteCallMedia key={userId} userId={userId} stream={stream} video={isVideo} />
+              <RemoteCallMedia key={userId} userId={userId} username={participantNames?.[userId]} stream={stream} video={isVideo} />
             ))}
           </div>
         )}
@@ -109,7 +117,7 @@ export default function CallDialog({
   );
 }
 
-function RemoteCallMedia({ userId, stream, video }) {
+function RemoteCallMedia({ userId, username, stream, video }) {
   const mediaRef = useRef(null);
 
   useEffect(() => {
@@ -120,15 +128,15 @@ function RemoteCallMedia({ userId, stream, video }) {
     return (
       <div className="remote-call-media">
         <video ref={mediaRef} className="call-video" autoPlay playsInline />
-        <span>@{userId.slice(0, 6)}</span>
+        <span>@{username || userId.slice(0, 6)}</span>
       </div>
     );
   }
 
   return (
     <div className="audio-participant">
-      <div className="call-avatar">{userId.slice(0, 1).toUpperCase()}</div>
-      <strong>@{userId.slice(0, 8)}</strong>
+      <div className="call-avatar">{(username || userId).slice(0, 1).toUpperCase()}</div>
+      <strong>@{username || userId.slice(0, 8)}</strong>
       <small>Connected</small>
       <audio ref={mediaRef} autoPlay playsInline />
     </div>

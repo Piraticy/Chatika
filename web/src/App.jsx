@@ -146,6 +146,19 @@ export default function App() {
           setMessages((prev) =>
             prev.map((msg) => (msg.id === evt.data.message_id ? { ...msg, reaction_users: evt.data.reaction_users || {} } : msg))
           );
+        } else if (evt.event === 'presence:update' && evt.data?.user_id) {
+          const presence = evt.data;
+          setRooms((prev) => prev.map((room) => ({
+            ...room,
+            participants: (room.participants || []).map((participant) => (
+              participant.id === presence.user_id
+                ? { ...participant, is_online: presence.is_online, last_seen_at: presence.last_seen_at }
+                : participant
+            ))
+          })));
+          if (presence.user_id === me.id) {
+            setMe((current) => current ? { ...current, is_online: presence.is_online, last_seen_at: presence.last_seen_at } : current);
+          }
         } else if (evt.event === 'call:signal') {
           if (!evt.room_id || evt.room_id === activeRoomId) {
             handleCallSignal(evt).catch((error) => {
@@ -181,7 +194,10 @@ export default function App() {
           }
         }
       },
-      onOpen: () => scheduleReadReceipts(messages)
+      onOpen: () => {
+        setMe((current) => current ? { ...current, is_online: true, last_seen_at: null } : current);
+        scheduleReadReceipts(messages);
+      }
     });
     socketRef.current = socket;
 
@@ -783,8 +799,19 @@ export default function App() {
     stopCall(false);
   }, []);
 
-  const statusText = useMemo(() => (me?.is_online ? 'Online now' : 'Offline'), [me]);
+  const statusText = 'Online now';
   const typingUsers = useMemo(() => Object.keys(typingByRoom[activeRoomId] || {}), [typingByRoom, activeRoomId]);
+  const activeRoom = useMemo(() => rooms.find((room) => room.id === activeRoomId) || null, [rooms, activeRoomId]);
+  const callParticipantNames = useMemo(
+    () => Object.fromEntries((activeRoom?.participants || []).map((participant) => [participant.id, participant.username])),
+    [activeRoom]
+  );
+  const callTargetLabel = useMemo(() => {
+    const others = (activeRoom?.participants || []).filter((participant) => participant.id !== me?.id);
+    if (!others.length) return 'room participants';
+    if (!activeRoom?.is_group && others[0]?.username) return `@${others[0].username}`;
+    return `${others.length} participant${others.length === 1 ? '' : 's'}`;
+  }, [activeRoom, me?.id]);
 
   if (!isAuthed) {
     return (
@@ -876,6 +903,8 @@ export default function App() {
         remoteStreams={remoteCallStreams}
         error={callError}
         connectionStatus={callConnectionStatus}
+        targetLabel={callTargetLabel}
+        participantNames={callParticipantNames}
         muted={callMuted}
         cameraOff={callCameraOff}
         onStart={startCall}

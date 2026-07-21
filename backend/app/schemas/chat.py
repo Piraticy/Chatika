@@ -13,12 +13,20 @@ class InviteMemberInput(BaseModel):
     username: str = Field(min_length=3, max_length=40)
 
 
+class RoomParticipantOut(BaseModel):
+    id: str
+    username: str
+    is_online: bool
+    last_seen_at: Optional[datetime] = None
+
+
 class RoomOut(BaseModel):
     id: str
     name: str
     is_group: bool
     created_by: Optional[str]
     participant_ids: list[str] = Field(default_factory=list)
+    participants: list[RoomParticipantOut] = Field(default_factory=list)
 
 
 class SendMessageInput(BaseModel):

@@ -90,6 +90,10 @@ npm run start
 
 ## 7) Push notifications
 - Generate one VAPID key pair and keep the private key only in Render environment variables.
+- From the repository root, generate a pair once:
+  ```bash
+  npx web-push generate-vapid-keys --json
+  ```
 - Set `PUSH_PROVIDER=multi`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL=mailto:admin@your-domain.com`.
 - In Chatika, each signed-in device selects **Enable notifications** once. The browser subscription is then stored securely and used for messages, calls, and screen-share alerts.
 - Installed iOS/iPadOS PWAs support Web Push on current versions; Android and desktop Chromium browsers are supported when notifications are allowed.
