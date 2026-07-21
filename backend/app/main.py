@@ -46,7 +46,7 @@ def root():
     }
 
 
-for web_asset in ('favicon.svg', 'logo.svg', 'manifest.webmanifest', 'sw.js'):
+for web_asset in ('apple-touch-icon.png', 'favicon.svg', 'logo.svg', 'manifest.webmanifest', 'sw.js'):
     web_asset_path = web_root / web_asset
     if web_asset_path.exists():
         app.add_api_route(
@@ -58,6 +58,10 @@ for web_asset in ('favicon.svg', 'logo.svg', 'manifest.webmanifest', 'sw.js'):
 assets_root = web_root / 'assets'
 if assets_root.exists():
     app.mount('/assets', StaticFiles(directory=assets_root), name='web-assets')
+
+icons_root = web_root / 'icons'
+if icons_root.exists():
+    app.mount('/icons', StaticFiles(directory=icons_root), name='web-icons')
 
 
 @app.on_event('startup')
