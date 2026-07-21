@@ -1,4 +1,5 @@
 :root {
+  --app-height: 100dvh;
   --ink: #0a1221;
   --ink-soft: #294254;
   --paper: #f7fbff;
@@ -315,7 +316,8 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 }
 
 @media (max-width: 720px) {
-  .auth-root { display: block; height: 100svh; height: 100dvh; min-height: 0; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  html, body, #root { height: var(--app-height); min-height: var(--app-height); overflow: hidden; }
+  .auth-root { display: block; height: var(--app-height); min-height: 0; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .auth-showcase { display: none; }
   .auth-panel { width: 100%; max-width: 480px; margin: 0 auto; padding: 22px 18px; }
   .auth-brand-row { margin-bottom: 29px; }
@@ -324,7 +326,7 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
   .auth-panel form { gap: 12px; }
   .auth-footer { margin-top: 16px; }
   .app-credit { margin-top: 10px; }
-  .chat-root { display: block; height: 100svh; height: 100dvh; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .chat-root { display: block; height: var(--app-height); min-height: 0; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .sidebar { display: grid; position: fixed; z-index: 20; top: 8px; bottom: 8px; left: 8px; width: min(88vw, 340px); min-height: auto; transform: translateX(calc(-100% - 20px)); transition: transform .22s ease; background: rgba(247,248,243,.97); }
   .sidebar.open { transform: translateX(0); }
   .sidebar-close, .menu-trigger { display: grid !important; }
