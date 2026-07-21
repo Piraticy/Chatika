@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     backup_encryption_key: str = 'change-me-with-32-byte-base64-fernet-key'
     media_root: str = './media'
+    media_max_bytes: int = 25 * 1024 * 1024
     message_max_length: int = 4000
 
     push_provider: str = 'none'

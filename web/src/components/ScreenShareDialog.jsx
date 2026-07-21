@@ -38,7 +38,7 @@ export default function ScreenShareDialog({
         {!supported && (
           <div className="notice-card warning">
             <strong>Screen capture is not available here.</strong>
-            <span>Use a supported desktop browser on Windows, macOS, or Linux. Mobile browser capture needs a native OS capture module.</span>
+            <span>Use a current HTTPS desktop browser. Android and iOS browsers can join calls and watch shared screens; capturing a mobile screen requires a native app wrapper with OS capture permission.</span>
           </div>
         )}
 
@@ -78,7 +78,7 @@ export default function ScreenShareDialog({
           )}
           <button type="button" className="quiet-button" onClick={onClose}>Not now</button>
         </div>
-        <p className="compatibility-note">Works best in current Chrome, Edge, Firefox, and Safari desktop browsers. Mobile browsers can watch; native screen capture needs platform-specific iOS/Android modules.</p>
+        <p className="compatibility-note">Works best in current Chrome, Edge, Firefox, and Safari over HTTPS. Cross-network sharing needs a configured TURN server in production; mobile capture requires native iOS/Android screen-capture modules.</p>
       </section>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
+import { resolveMediaUrl } from '../lib/api';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
@@ -24,10 +25,14 @@ export default function ChatLayout({
   onOpenAdmin,
   dataSaver,
   onToggleDataSaver,
+  callActive,
+  onStartCall,
   shareActive,
   onShareScreen,
   onInvite,
-  inviteStatus
+  inviteStatus,
+  onSendMedia,
+  mediaError
 }) {
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
   const messagesRef = useRef(null);
@@ -35,6 +40,12 @@ export default function ChatLayout({
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState('');
+  const fileInputRef = useRef(null);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
+  const recorderStreamRef = useRef(null);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const groupedMessages = useMemo(() => {
     const grouped = [];
@@ -76,6 +87,11 @@ export default function ChatLayout({
     return () => document.removeEventListener('click', onDocumentClick);
   }, []);
 
+  useEffect(() => () => {
+    recorderRef.current?.stop();
+    recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   function submitMessage(e) {
     e.preventDefault();
     const text = draft.trim();
@@ -112,6 +128,47 @@ export default function ChatLayout({
     const next = `${draft}${emoji}`;
     setDraft(next);
     onTyping?.(Boolean(next.trim()));
+  }
+
+  function handleFileChange(event) {
+    const [file] = event.target.files || [];
+    if (file && activeRoomId) onSendMedia?.(file);
+    event.target.value = '';
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    setRecordingError('');
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setRecordingError('Audio messages are not supported in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const supportedType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg'].find((type) => window.MediaRecorder.isTypeSupported?.(type));
+      const recorder = supportedType ? new MediaRecorder(stream, { mimeType: supportedType }) : new MediaRecorder(stream);
+      recorderChunksRef.current = [];
+      recorderStreamRef.current = stream;
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => event.data.size && recorderChunksRef.current.push(event.data);
+      recorder.onstop = () => {
+        const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+        onSendMedia?.(new File([blob], `voice-message-${Date.now()}.${extension}`, { type: blob.type }), 'voice');
+        stream.getTracks().forEach((track) => track.stop());
+        recorderStreamRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (error) {
+      setRecordingError(error.message || 'Microphone permission was not granted.');
+    }
   }
 
   function reactionSummary(reactionUsers) {
@@ -205,6 +262,12 @@ export default function ChatLayout({
             </div>
           </div>
           <div className="thread-actions">
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call">
+              <span>☎</span><span>Audio</span>
+            </button>
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('video')} disabled={!activeRoomId} aria-label="Start video call" title="Video call">
+              <span>▣</span><span>Video</span>
+            </button>
             <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId}>
               <span className="share-icon">▣</span><span>{shareActive ? 'Sharing' : 'Share screen'}</span>
             </button>
@@ -230,7 +293,9 @@ export default function ChatLayout({
           {groupedMessages.map((m) => (
             <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'}>
               {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : 'Member'}</span>}
-              <p>{m.text ? renderText(m.text, m.id) : `[${m.message_type}]`}</p>
+              {m.media_url && <MessageMedia message={m} />}
+              {m.text && <p>{renderText(m.text, m.id)}</p>}
+              {!m.text && !m.media_url && <p>[{m.message_type}]</p>}
               <div className="reaction-row">
                 <div className="reaction-buttons">
                   {REACTION_EMOJIS.map((emoji) => (
@@ -270,6 +335,11 @@ export default function ChatLayout({
           >
             🙂
           </button>
+          <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} aria-label="Attach photo, audio, or video" title="Attach media" disabled={!activeRoomId}>＋</button>
+          <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
+          <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} aria-label={recording ? 'Stop recording' : 'Record audio message'} title={recording ? 'Stop recording' : 'Record audio message'} disabled={!activeRoomId}>
+            {recording ? '■' : '🎙'}
+          </button>
           <input
             name="text"
             placeholder={activeRoomId ? 'Write a message...' : 'Select a room first'}
@@ -301,13 +371,22 @@ export default function ChatLayout({
               </div>
             </div>
           )}
-          <button type="submit" disabled={!activeRoomId}>
+          <button type="submit" className="send-button" disabled={!activeRoomId}>
             Send <span aria-hidden="true">↗</span>
           </button>
         </form>
+        {(recordingError || mediaError) && <div className="composer-error">{recordingError || mediaError}</div>}
       </main>
     </div>
   );
+}
+
+function MessageMedia({ message }) {
+  const url = resolveMediaUrl(message.media_url);
+  if (message.message_type === 'image') return <img className="message-image" src={url} alt={message.text || 'Shared image'} loading="lazy" />;
+  if (message.message_type === 'video') return <video className="message-video" src={url} controls playsInline preload="metadata" />;
+  if (message.message_type === 'audio' || message.message_type === 'voice') return <audio className="message-audio" src={url} controls preload="metadata" />;
+  return <a className="message-file" href={url} target="_blank" rel="noreferrer">Open shared file</a>;
 }
 
 function ChatikaEmoji({ emoji }) {

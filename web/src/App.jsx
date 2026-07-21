@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import AuthPanel from './components/AuthPanel';
 import AdminPanel from './components/AdminPanel';
+import CallDialog from './components/CallDialog';
 import ChatLayout from './components/ChatLayout';
 import ScreenShareDialog from './components/ScreenShareDialog';
-import { api, API_URL } from './lib/api';
+import { api, API_URL, uploadFile } from './lib/api';
 import { createSocket } from './lib/socket';
 
 const ACCESS_KEY = 'chatika_access';
@@ -34,7 +35,15 @@ export default function App() {
   const [localShareStream, setLocalShareStream] = useState(null);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [shareError, setShareError] = useState('');
+  const [callDialogOpen, setCallDialogOpen] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+  const [callKind, setCallKind] = useState('audio');
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [localCallStream, setLocalCallStream] = useState(null);
+  const [remoteCallStreams, setRemoteCallStreams] = useState({});
+  const [callError, setCallError] = useState('');
   const [inviteStatus, setInviteStatus] = useState(null);
+  const [mediaError, setMediaError] = useState('');
   const socketRef = useRef(null);
   const typingTimersRef = useRef({});
   const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
@@ -42,6 +51,9 @@ export default function App() {
   const peerConnectionsRef = useRef(new Map());
   const pendingIceRef = useRef(new Map());
   const iceServersRef = useRef([]);
+  const localCallStreamRef = useRef(null);
+  const callPeerConnectionsRef = useRef(new Map());
+  const callPendingIceRef = useRef(new Map());
 
   const isAuthed = Boolean(token && me);
 
@@ -116,7 +128,10 @@ export default function App() {
           );
         } else if (evt.event === 'call:signal') {
           if (!evt.room_id || evt.room_id === activeRoomId) {
-            handleCallSignal(evt).catch((error) => setShareError(error.message));
+            handleCallSignal(evt).catch((error) => {
+              if (evt.data?.type?.startsWith('call-')) setCallError(error.message || 'Call connection failed.');
+              else setShareError(error.message || 'Screen sharing connection failed.');
+            });
           }
         } else if (evt.event === 'typing:update') {
           const { room_id: roomId, user_id: userId, is_typing: isTyping } = evt.data || {};
@@ -212,6 +227,27 @@ export default function App() {
     });
   }
 
+  async function sendMedia(file, requestedType) {
+    if (!activeRoomId || !file) return;
+    setMediaError('');
+    try {
+      const uploaded = await uploadFile(file, { token });
+      const messageType = requestedType || (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file');
+      await api('/chat/messages', {
+        method: 'POST',
+        token,
+        body: {
+          room_id: activeRoomId,
+          text: requestedType === 'voice' ? 'Voice message' : file.name,
+          message_type: requestedType || messageType,
+          media_url: uploaded.media_url
+        }
+      });
+    } catch (error) {
+      setMediaError(error.message || 'Unable to send this media.');
+    }
+  }
+
   function sendTyping(isTyping) {
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !activeRoomId) return;
     const now = Date.now();
@@ -270,6 +306,7 @@ export default function App() {
       // Clear local access even when the network is unavailable.
     } finally {
       stopShare();
+      stopCall();
       setToken('');
       setRefreshToken('');
       setMe(null);
@@ -350,10 +387,125 @@ export default function App() {
     return peer;
   }
 
+  async function createCallPeerConnection(userId, kind) {
+    const existing = callPeerConnectionsRef.current.get(userId);
+    if (existing) return existing;
+
+    const peer = new RTCPeerConnection({ iceServers: await getIceServers() });
+    const stream = localCallStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    } else {
+      peer.addTransceiver('audio', { direction: 'recvonly' });
+      if (kind === 'video') peer.addTransceiver('video', { direction: 'recvonly' });
+    }
+    peer.onicecandidate = (event) => {
+      if (event.candidate) sendCallSignal(userId, { type: 'call-ice', candidate: event.candidate });
+    };
+    peer.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      if (remoteStream) setRemoteCallStreams((prev) => ({ ...prev, [userId]: remoteStream }));
+    };
+    peer.onconnectionstatechange = () => {
+      if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
+        peer.close();
+        callPeerConnectionsRef.current.delete(userId);
+        setRemoteCallStreams((prev) => {
+          const next = { ...prev };
+          delete next[userId];
+          return next;
+        });
+      }
+    };
+    callPeerConnectionsRef.current.set(userId, peer);
+    return peer;
+  }
+
+  async function startCall(kind) {
+    setCallError('');
+    setIncomingCall(null);
+    if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
+      setCallError('Calls are not supported in this browser. Use the latest browser over HTTPS.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+      localCallStreamRef.current = stream;
+      setLocalCallStream(stream);
+      setCallKind(kind);
+      setCallActive(true);
+      setCallDialogOpen(true);
+
+      const participants = (rooms.find((room) => room.id === activeRoomId)?.participant_ids || []).filter((id) => id !== me.id);
+      await Promise.all(participants.map(async (userId) => {
+        const peer = await createCallPeerConnection(userId, kind);
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        sendCallSignal(userId, { type: 'call-offer', kind, description: offer });
+      }));
+    } catch (error) {
+      if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') setCallError(error.message || 'Unable to start the call.');
+      else setCallError('Microphone or camera permission was not granted.');
+      stopCall(false);
+    }
+  }
+
+  async function acceptIncomingCall() {
+    const call = incomingCall;
+    if (!call) return;
+    setCallError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.kind === 'video' });
+      localCallStreamRef.current = stream;
+      setLocalCallStream(stream);
+      setCallKind(call.kind);
+      setCallActive(true);
+      setCallDialogOpen(true);
+      const peer = await createCallPeerConnection(call.fromUserId, call.kind);
+      await peer.setRemoteDescription(call.description);
+      const pending = callPendingIceRef.current.get(call.fromUserId) || [];
+      await Promise.all(pending.map((candidate) => peer.addIceCandidate(candidate)));
+      callPendingIceRef.current.delete(call.fromUserId);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      sendCallSignal(call.fromUserId, { type: 'call-answer', description: answer });
+      setIncomingCall(null);
+    } catch (error) {
+      setCallError(error.message || 'Unable to answer the call.');
+    }
+  }
+
+  function rejectIncomingCall() {
+    if (incomingCall?.fromUserId) sendCallSignal(incomingCall.fromUserId, { type: 'call-hangup' });
+    setIncomingCall(null);
+    setCallDialogOpen(false);
+  }
+
+  function stopCall(notify = true) {
+    if (notify) {
+      callPeerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'call-hangup' }));
+    }
+    localCallStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localCallStreamRef.current = null;
+    setLocalCallStream(null);
+    setRemoteCallStreams({});
+    setCallActive(false);
+    setIncomingCall(null);
+    setCallDialogOpen(false);
+    callPeerConnectionsRef.current.forEach((peer) => peer.close());
+    callPeerConnectionsRef.current.clear();
+    callPendingIceRef.current.clear();
+  }
+
   async function startShare() {
     setShareError('');
+    if (!window.isSecureContext) {
+      setShareError('Screen sharing requires a secure HTTPS connection. Open the hosted Chatika address, not an insecure HTTP address.');
+      return;
+    }
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      setShareError('This browser does not support screen capture. Try a current desktop browser on Windows, macOS, or Linux.');
+      setShareError('This browser does not support screen capture. Use a current desktop browser, or use an installed native app for mobile screen capture.');
       return;
     }
 
@@ -384,6 +536,7 @@ export default function App() {
   }
 
   function stopShare() {
+    peerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'hangup' }));
     localShareStreamRef.current?.getTracks().forEach((track) => track.stop());
     localShareStreamRef.current = null;
     setLocalShareStream(null);
@@ -394,10 +547,9 @@ export default function App() {
     pendingIceRef.current.clear();
   }
 
-  async function handleCallSignal(evt) {
-    const { from_user_id: userId, data } = evt;
-    if (!userId || !data || !window.RTCPeerConnection) return;
-    const peer = await createPeerConnection(userId);
+  async function handleShareSignal(userId, data) {
+    const peer = data.type === 'hangup' ? peerConnectionsRef.current.get(userId) : await createPeerConnection(userId);
+    if (!peer) return;
 
     if (data.type === 'offer') {
       setShareDialogOpen(true);
@@ -414,10 +566,61 @@ export default function App() {
     } else if (data.type === 'ice') {
       if (peer.remoteDescription) await peer.addIceCandidate(data.candidate);
       else pendingIceRef.current.set(userId, [...(pendingIceRef.current.get(userId) || []), data.candidate]);
+    } else if (data.type === 'hangup') {
+      peer.close();
+      peerConnectionsRef.current.delete(userId);
+      setRemoteStreams((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
     }
   }
 
-  useEffect(() => () => stopShare(), []);
+  async function handleCallSignal(evt) {
+    const { from_user_id: userId, data } = evt;
+    if (!userId || !data || !window.RTCPeerConnection) return;
+    if (['offer', 'answer', 'ice'].includes(data.type)) {
+      await handleShareSignal(userId, data);
+      return;
+    }
+
+    if (data.type === 'call-offer') {
+      setIncomingCall({ fromUserId: userId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: userId });
+      setCallDialogOpen(true);
+      return;
+    }
+
+    if (data.type === 'call-answer') {
+      const peer = callPeerConnectionsRef.current.get(userId);
+      if (!peer) return;
+      await peer.setRemoteDescription(data.description);
+    } else if (data.type === 'call-ice') {
+      const peer = callPeerConnectionsRef.current.get(userId);
+      if (!peer) {
+        callPendingIceRef.current.set(userId, [...(callPendingIceRef.current.get(userId) || []), data.candidate]);
+        return;
+      }
+      if (peer.remoteDescription) await peer.addIceCandidate(data.candidate);
+      else callPendingIceRef.current.set(userId, [...(callPendingIceRef.current.get(userId) || []), data.candidate]);
+    } else if (data.type === 'call-hangup') {
+      const peer = callPeerConnectionsRef.current.get(userId);
+      if (!peer) return;
+      peer.close();
+      callPeerConnectionsRef.current.delete(userId);
+      setRemoteCallStreams((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      if (!callPeerConnectionsRef.current.size) stopCall(false);
+    }
+  }
+
+  useEffect(() => () => {
+    stopShare();
+    stopCall(false);
+  }, []);
 
   const statusText = useMemo(() => (me?.is_online ? 'Online now' : 'Offline'), [me]);
   const typingUsers = useMemo(() => Object.keys(typingByRoom[activeRoomId] || {}), [typingByRoom, activeRoomId]);
@@ -456,6 +659,8 @@ export default function App() {
         messages={messages}
         onSelectRoom={setActiveRoomId}
         onSend={sendMessage}
+        onSendMedia={sendMedia}
+        mediaError={mediaError}
         onCreateRoom={createRoom}
         statusText={statusText}
         isAdmin={me.is_admin}
@@ -471,6 +676,12 @@ export default function App() {
         }}
         dataSaver={dataSaver}
         onToggleDataSaver={() => setDataSaver((value) => !value)}
+        callActive={callActive}
+        onStartCall={(kind) => {
+          setCallError('');
+          setCallDialogOpen(true);
+          if (kind && !callActive) startCall(kind);
+        }}
         shareActive={shareActive}
         onInvite={inviteUser}
         inviteStatus={inviteStatus}
@@ -491,6 +702,23 @@ export default function App() {
         onStop={stopShare}
         onClose={() => setShareDialogOpen(false)}
         onToggleDataSaver={() => setDataSaver((value) => !value)}
+      />
+      <CallDialog
+        open={callDialogOpen}
+        active={callActive}
+        kind={callKind}
+        incoming={incomingCall}
+        localStream={localCallStream}
+        remoteStreams={remoteCallStreams}
+        error={callError}
+        onStart={startCall}
+        onAccept={acceptIncomingCall}
+        onReject={rejectIncomingCall}
+        onHangup={() => {
+          stopCall();
+          setCallDialogOpen(false);
+        }}
+        onClose={() => setCallDialogOpen(false)}
       />
       <AdminPanel
         open={adminOpen}
