@@ -4,7 +4,7 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "fullscreen"],
+  "display_override": ["fullscreen", "standalone", "window-controls-overlay"],
   "orientation": "any",
   "background_color": "#0A1221",
   "theme_color": "#0A1221",

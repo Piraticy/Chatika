@@ -45,7 +45,7 @@ export default function AppLifecyclePrompts() {
           <div className="lifecycle-icon">↗</div>
           <div className="lifecycle-copy">
             <strong>Keep Chatika close</strong>
-            <span>{install.ios ? 'Tap Share, then “Add to Home Screen” for the app experience.' : 'Install the app for faster access and a full-screen workspace.'}</span>
+            <span>{install.ios ? 'Tap Share, then “Add to Home Screen” to hide Safari controls and open Chatika full screen.' : 'Install the app for faster access and a full-screen workspace.'}</span>
           </div>
           <button type="button" className="lifecycle-action" onClick={installApp}>{install.ios ? 'How to' : 'Install'}</button>
           <button type="button" className="lifecycle-dismiss" onClick={() => setInstall(null)} aria-label="Dismiss install prompt">×</button>
