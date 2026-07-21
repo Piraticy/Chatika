@@ -1,5 +1,13 @@
 const CACHE_NAME = 'chatika-shell-v3';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/logo.svg'];
+const APP_SHELL = [
+  '/',
+  '/manifest.webmanifest',
+  '/favicon.svg',
+  '/logo.svg',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/apple-touch-icon.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

@@ -15,7 +15,8 @@
     "android": {
       "package": "com.chatika.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0A1221"
+        "backgroundColor": "#0A1221",
+        "foregroundImage": "./assets/icon.png"
       },
       "softwareKeyboardLayoutMode": "pan"
     },
