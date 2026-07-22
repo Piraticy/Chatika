@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 
-export default function AdminPanel({ open, users, loading, error, onClose, onRefresh, onApprove, onRemove }) {
+export default function AdminPanel({ open, users = [], loading, error, onClose, onRefresh, onApprove, onRemove }) {
   const [query, setQuery] = useState('');
 
   const analytics = useMemo(() => buildAnalytics(users), [users]);
@@ -8,7 +8,7 @@ export default function AdminPanel({ open, users, loading, error, onClose, onRef
     const needle = query.trim().toLowerCase();
     if (!needle) return users;
     return users.filter((user) => [
-      user.username,
+      user.username || '',
       countryName(user.country_code),
       user.country_code,
       user.device,
@@ -164,8 +164,8 @@ function countryFlag(code) {
   return String.fromCodePoint(...code.toUpperCase().split('').map((letter) => 127397 + letter.charCodeAt(0)));
 }
 
-function deviceCategory(value = '') {
-  const device = value.toLowerCase();
+function deviceCategory(value) {
+  const device = String(value || '').toLowerCase();
   if (device.includes('android')) return 'Android';
   if (device.includes('iphone') || device.includes('ipad') || device.includes('ios')) return 'iOS';
   if (device.includes('mac')) return 'macOS';
