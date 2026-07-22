@@ -59,14 +59,17 @@ export default function App() {
   const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
   const localShareStreamRef = useRef(null);
   const peerConnectionsRef = useRef(new Map());
+  const peerRoomIdsRef = useRef(new Map());
   const pendingIceRef = useRef(new Map());
   const iceServersRef = useRef([]);
   const remoteStreamsRef = useRef(new Map());
   const localCallStreamRef = useRef(null);
   const callPeerConnectionsRef = useRef(new Map());
+  const callPeerRoomIdsRef = useRef(new Map());
   const callPendingIceRef = useRef(new Map());
   const remoteCallStreamsRef = useRef(new Map());
   const callRetryTimersRef = useRef(new Map());
+  const iceTransportPolicyRef = useRef('all');
   const readReceiptTimerRef = useRef(null);
 
   const isAuthed = Boolean(token && me);
@@ -456,6 +459,7 @@ export default function App() {
     if (iceServersRef.current.length) return iceServersRef.current;
     try {
       const config = await api('/realtime/ice-config', { token });
+      iceTransportPolicyRef.current = config.force_turn ? 'relay' : 'all';
       iceServersRef.current = config.ice_servers?.length
         ? config.ice_servers
         : [{ urls: ['stun:stun.l.google.com:19302'] }];
@@ -465,23 +469,24 @@ export default function App() {
     return iceServersRef.current;
   }
 
-  function sendCallSignal(targetUserId, data) {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !activeRoomId) return;
+  function sendCallSignal(targetUserId, data, roomId = activeRoomId) {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !roomId) return;
     socketRef.current.send(
       JSON.stringify({
         event: 'call:signal',
-        room_id: activeRoomId,
+        room_id: roomId,
         target_user_id: targetUserId,
         data
       })
     );
   }
 
-  async function createPeerConnection(userId) {
+  async function createPeerConnection(userId, roomId = activeRoomId) {
     const existing = peerConnectionsRef.current.get(userId);
     if (existing) return existing;
 
-    const peer = new RTCPeerConnection({ iceServers: await getIceServers() });
+    const peer = new RTCPeerConnection({ iceServers: await getIceServers(), iceTransportPolicy: iceTransportPolicyRef.current, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 4 });
+    peerRoomIdsRef.current.set(userId, roomId);
     const stream = localShareStreamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
@@ -489,7 +494,7 @@ export default function App() {
       peer.addTransceiver('video', { direction: 'recvonly' });
     }
     peer.onicecandidate = (event) => {
-      if (event.candidate) sendCallSignal(userId, { type: 'ice', candidate: event.candidate });
+      if (event.candidate) sendCallSignal(userId, { type: 'ice', candidate: event.candidate }, roomId);
     };
     peer.ontrack = (event) => {
       const remoteStream = event.streams[0] || remoteStreamsRef.current.get(userId) || new MediaStream();
@@ -501,6 +506,7 @@ export default function App() {
       if (['failed', 'closed'].includes(peer.connectionState)) {
         peer.close();
         peerConnectionsRef.current.delete(userId);
+        peerRoomIdsRef.current.delete(userId);
         remoteStreamsRef.current.delete(userId);
         setRemoteStreams((prev) => {
           const next = { ...prev };
@@ -513,11 +519,12 @@ export default function App() {
     return peer;
   }
 
-  async function createCallPeerConnection(userId, kind) {
+  async function createCallPeerConnection(userId, kind, roomId = activeRoomId) {
     const existing = callPeerConnectionsRef.current.get(userId);
     if (existing) return existing;
 
-    const peer = new RTCPeerConnection({ iceServers: await getIceServers() });
+    const peer = new RTCPeerConnection({ iceServers: await getIceServers(), iceTransportPolicy: iceTransportPolicyRef.current, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 4 });
+    callPeerRoomIdsRef.current.set(userId, roomId);
     const stream = localCallStreamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
@@ -526,7 +533,7 @@ export default function App() {
       if (kind === 'video') peer.addTransceiver('video', { direction: 'recvonly' });
     }
     peer.onicecandidate = (event) => {
-      if (event.candidate) sendCallSignal(userId, { type: 'call-ice', candidate: event.candidate });
+      if (event.candidate) sendCallSignal(userId, { type: 'call-ice', candidate: event.candidate }, roomId);
     };
     peer.ontrack = (event) => {
       const remoteStream = event.streams[0] || remoteCallStreamsRef.current.get(userId) || new MediaStream();
@@ -547,6 +554,7 @@ export default function App() {
       if (peer.connectionState === 'closed') {
         peer.close();
         callPeerConnectionsRef.current.delete(userId);
+        callPeerRoomIdsRef.current.delete(userId);
         remoteCallStreamsRef.current.delete(userId);
         setRemoteCallStreams((prev) => {
           const next = { ...prev };
@@ -572,7 +580,15 @@ export default function App() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: kind === 'video' ? {
+          facingMode: 'user',
+          width: { ideal: dataSaver ? 640 : 960, max: dataSaver ? 854 : 1280 },
+          height: { ideal: dataSaver ? 480 : 720, max: dataSaver ? 480 : 720 },
+          frameRate: { ideal: dataSaver ? 15 : 24, max: dataSaver ? 20 : 30 }
+        } : false
+      });
       localCallStreamRef.current = stream;
       setLocalCallStream(stream);
       setCallKind(kind);
@@ -584,10 +600,10 @@ export default function App() {
 
       const participants = (rooms.find((room) => room.id === activeRoomId)?.participant_ids || []).filter((id) => id !== me.id);
       await Promise.all(participants.map(async (userId) => {
-        const peer = await createCallPeerConnection(userId, kind);
+        const peer = await createCallPeerConnection(userId, kind, activeRoomId);
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
-        sendCallSignal(userId, { type: 'call-offer', kind, description: offer });
+        sendCallSignal(userId, { type: 'call-offer', kind, description: offer }, activeRoomId);
       }));
     } catch (error) {
       const message = error.name !== 'AbortError' && error.name !== 'NotAllowedError'
@@ -604,7 +620,10 @@ export default function App() {
     if (!call) return;
     setCallError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.kind === 'video' });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: call.kind === 'video' ? { facingMode: 'user', width: { ideal: 960, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 24, max: 30 } } : false
+      });
       localCallStreamRef.current = stream;
       setLocalCallStream(stream);
       setCallKind(call.kind);
@@ -613,14 +632,14 @@ export default function App() {
       setCallConnectionStatus('Connecting');
       setCallActive(true);
       setCallDialogOpen(true);
-      const peer = await createCallPeerConnection(call.fromUserId, call.kind);
+      const peer = await createCallPeerConnection(call.fromUserId, call.kind, call.roomId);
       await peer.setRemoteDescription(call.description);
       const pending = callPendingIceRef.current.get(call.fromUserId) || [];
       await Promise.all(pending.map((candidate) => peer.addIceCandidate(candidate)));
       callPendingIceRef.current.delete(call.fromUserId);
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
-      sendCallSignal(call.fromUserId, { type: 'call-answer', description: answer });
+      sendCallSignal(call.fromUserId, { type: 'call-answer', description: answer }, call.roomId);
       setIncomingCall(null);
     } catch (error) {
       setCallError(error.message || 'Unable to answer the call.');
@@ -628,14 +647,14 @@ export default function App() {
   }
 
   function rejectIncomingCall() {
-    if (incomingCall?.fromUserId) sendCallSignal(incomingCall.fromUserId, { type: 'call-hangup' });
+    if (incomingCall?.fromUserId) sendCallSignal(incomingCall.fromUserId, { type: 'call-hangup' }, incomingCall.roomId);
     setIncomingCall(null);
     setCallDialogOpen(false);
   }
 
   function stopCall(notify = true) {
     if (notify) {
-      callPeerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'call-hangup' }));
+      callPeerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'call-hangup' }, callPeerRoomIdsRef.current.get(userId)));
     }
     localCallStreamRef.current?.getTracks().forEach((track) => track.stop());
     localCallStreamRef.current = null;
@@ -647,6 +666,7 @@ export default function App() {
     setCallDialogOpen(false);
     callPeerConnectionsRef.current.forEach((peer) => peer.close());
     callPeerConnectionsRef.current.clear();
+    callPeerRoomIdsRef.current.clear();
     callPendingIceRef.current.clear();
     callRetryTimersRef.current.forEach((timer) => clearTimeout(timer));
     callRetryTimersRef.current.clear();
@@ -661,7 +681,7 @@ export default function App() {
     try {
       const offer = await peer.createOffer({ iceRestart: true });
       await peer.setLocalDescription(offer);
-      sendCallSignal(userId, { type: 'call-offer', kind, description: offer, restart: true });
+      sendCallSignal(userId, { type: 'call-offer', kind, description: offer, restart: true }, callPeerRoomIdsRef.current.get(userId));
     } catch (_error) {
       setCallError('The connection could not be restored. Please try the call again.');
     }
@@ -728,10 +748,10 @@ export default function App() {
       const participants = (rooms.find((room) => room.id === activeRoomId)?.participant_ids || []).filter((id) => id !== me.id);
       await Promise.all(
         participants.map(async (userId) => {
-          const peer = await createPeerConnection(userId);
+          const peer = await createPeerConnection(userId, activeRoomId);
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
-          sendCallSignal(userId, { type: 'offer', description: offer });
+          sendCallSignal(userId, { type: 'offer', description: offer }, activeRoomId);
         })
       );
     } catch (error) {
@@ -740,7 +760,7 @@ export default function App() {
   }
 
   function stopShare() {
-    peerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'hangup' }));
+    peerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'hangup' }, peerRoomIdsRef.current.get(userId)));
     localShareStreamRef.current?.getTracks().forEach((track) => track.stop());
     localShareStreamRef.current = null;
     setLocalShareStream(null);
@@ -749,11 +769,12 @@ export default function App() {
     remoteStreamsRef.current.clear();
     peerConnectionsRef.current.forEach((peer) => peer.close());
     peerConnectionsRef.current.clear();
+    peerRoomIdsRef.current.clear();
     pendingIceRef.current.clear();
   }
 
-  async function handleShareSignal(userId, data) {
-    const peer = data.type === 'hangup' ? peerConnectionsRef.current.get(userId) : await createPeerConnection(userId);
+  async function handleShareSignal(userId, data, roomId) {
+    const peer = data.type === 'hangup' ? peerConnectionsRef.current.get(userId) : await createPeerConnection(userId, roomId);
     if (!peer) return;
 
     if (data.type === 'offer') {
@@ -765,15 +786,19 @@ export default function App() {
       pendingIceRef.current.delete(userId);
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
-      sendCallSignal(userId, { type: 'answer', description: answer });
+      sendCallSignal(userId, { type: 'answer', description: answer }, roomId);
     } else if (data.type === 'answer') {
       await peer.setRemoteDescription(data.description);
+      const pending = pendingIceRef.current.get(userId) || [];
+      await Promise.all(pending.map((candidate) => peer.addIceCandidate(candidate)));
+      pendingIceRef.current.delete(userId);
     } else if (data.type === 'ice') {
       if (peer.remoteDescription) await peer.addIceCandidate(data.candidate);
       else pendingIceRef.current.set(userId, [...(pendingIceRef.current.get(userId) || []), data.candidate]);
     } else if (data.type === 'hangup') {
       peer.close();
       peerConnectionsRef.current.delete(userId);
+      peerRoomIdsRef.current.delete(userId);
       setRemoteStreams((prev) => {
         const next = { ...prev };
         delete next[userId];
@@ -784,24 +809,28 @@ export default function App() {
   }
 
   async function handleCallSignal(evt) {
-    const { from_user_id: userId, data } = evt;
+    const { from_user_id: userId, room_id: roomId, data } = evt;
     if (!userId || !data || !window.RTCPeerConnection) return;
     if (['offer', 'answer', 'ice'].includes(data.type)) {
-      await handleShareSignal(userId, data);
+      await handleShareSignal(userId, data, roomId);
       return;
     }
 
     if (data.type === 'call-offer') {
       const existingPeer = callPeerConnectionsRef.current.get(userId);
       if (existingPeer && callActive) {
+        if (existingPeer.signalingState === 'have-local-offer') await existingPeer.setLocalDescription({ type: 'rollback' });
         await existingPeer.setRemoteDescription(data.description);
+        const pending = callPendingIceRef.current.get(userId) || [];
+        await Promise.all(pending.map((candidate) => existingPeer.addIceCandidate(candidate)));
+        callPendingIceRef.current.delete(userId);
         const answer = await existingPeer.createAnswer();
         await existingPeer.setLocalDescription(answer);
-        sendCallSignal(userId, { type: 'call-answer', description: answer });
+        sendCallSignal(userId, { type: 'call-answer', description: answer }, roomId);
         setCallConnectionStatus('Connecting');
         return;
       }
-      setIncomingCall({ fromUserId: userId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
+      setIncomingCall({ fromUserId: userId, roomId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
       setCallDialogOpen(true);
       return;
     }
@@ -810,6 +839,9 @@ export default function App() {
       const peer = callPeerConnectionsRef.current.get(userId);
       if (!peer) return;
       await peer.setRemoteDescription(data.description);
+      const pending = callPendingIceRef.current.get(userId) || [];
+      await Promise.all(pending.map((candidate) => peer.addIceCandidate(candidate)));
+      callPendingIceRef.current.delete(userId);
       setCallConnectionStatus('Connecting');
     } else if (data.type === 'call-ice') {
       const peer = callPeerConnectionsRef.current.get(userId);

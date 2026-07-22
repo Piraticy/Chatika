@@ -32,7 +32,7 @@ export default function ScreenShareDialog({
             <h2 id="share-title">Share your screen</h2>
             <p>Private peer-to-peer sharing with adaptive quality.</p>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close screen share dialog">×</button>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close screen share dialog"><ShareIcon name="close" /></button>
         </div>
 
         {!supported && (
@@ -49,7 +49,7 @@ export default function ScreenShareDialog({
             <video ref={localVideoRef} className="share-video" autoPlay muted playsInline />
           ) : (
             <div className="share-placeholder">
-              <span className="share-glyph">▣</span>
+              <span className="share-glyph"><ShareIcon name="screen" /></span>
               <strong>Ready when you are</strong>
               <span>Your screen stays peer-to-peer. Chat messages keep working in the background.</span>
             </div>
@@ -72,16 +72,22 @@ export default function ScreenShareDialog({
 
         <div className="dialog-actions">
           {active ? (
-            <button type="button" className="danger-button" onClick={onStop}>Stop sharing</button>
+            <button type="button" className="danger-button premium-dialog-button" onClick={onStop}><ShareIcon name="stop" />Stop sharing</button>
           ) : (
-            <button type="button" className="primary-button" onClick={onStart} disabled={!supported}>Choose a screen</button>
+            <button type="button" className="primary-button premium-dialog-button" onClick={onStart} disabled={!supported}><ShareIcon name="screen" />Choose a screen</button>
           )}
-          <button type="button" className="quiet-button" onClick={onClose}>Not now</button>
+          <button type="button" className="quiet-button premium-dialog-button" onClick={onClose}>Close</button>
         </div>
-        <p className="compatibility-note">Works best in current Chrome, Edge, Firefox, and Safari over HTTPS. Cross-network sharing needs a configured TURN server in production; mobile capture requires native iOS/Android screen-capture modules.</p>
       </section>
     </div>
   );
+}
+
+function ShareIcon({ name }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (name === 'screen') return <svg viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="3" y="4" width="18" height="13" rx="2" /><path {...common} d="M8 21h8M12 17v4" /></svg>;
+  if (name === 'stop') return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m6 6 12 12M18 6 6 18" /></svg>;
 }
 
 function RemoteVideo({ userId, stream }) {

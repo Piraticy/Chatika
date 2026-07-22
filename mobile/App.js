@@ -417,7 +417,7 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.3</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.4</Text>
     </SafeAreaView>
   );
 }
