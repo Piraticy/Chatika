@@ -233,7 +233,7 @@ export default function ChatLayout({
           <button className="profile-button" type="button" onClick={() => profileInputRef.current?.click()} aria-label="Change profile picture"><Avatar user={me} size="large" /></button>
           <input ref={profileInputRef} className="file-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const [file] = event.target.files || []; if (file) onChangeProfilePhoto?.(file).catch((error) => setLocalError(error.message)); event.target.value = ''; }} />
           <div className="identity"><h2>@{me.username}</h2><small>{statusText}</small></div>
-          <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation">×</button>
+          <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation"><UiIcon name="close" /></button>
         </div>
 
         <section className="new-chat-section">
@@ -274,14 +274,14 @@ export default function ChatLayout({
       <main className="thread glass">
         <header className="thread-head">
           <div className="thread-title-wrap">
-            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open conversations">☰</button>
+            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open conversations"><UiIcon name="menu" /></button>
             {activeContact && <Avatar user={activeContact} size="thread" />}
             <div><span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP' : 'PRIVATE CHAT') : 'CHATIKA'}</span><h2>{activeRoom ? roomLabel(activeRoom, me.id) : 'Your conversations'}</h2><small>{activePresenceText}</small></div>
           </div>
           <div className="thread-actions">
-            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call">☎<span>Audio</span></button>
-            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('video')} disabled={!activeRoomId} aria-label="Start video call" title="Video call">▣<span>Video</span></button>
-            <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId} aria-label="Share screen">▣<span>{shareActive ? 'Sharing' : 'Share screen'}</span></button>
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call"><UiIcon name="phone" /><span>Audio</span></button>
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('video')} disabled={!activeRoomId} aria-label="Start video call" title="Video call"><UiIcon name="video" /><span>Video</span></button>
+            <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId} aria-label="Share screen"><UiIcon name="screen" /><span>{shareActive ? 'Sharing' : 'Share screen'}</span></button>
           </div>
         </header>
         <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
@@ -292,12 +292,12 @@ export default function ChatLayout({
         <div className="compose-area">
           {replyingTo && <div className="reply-preview"><span>↩ Replying to @{replyingTo.sender_id === me.id ? me.username : replyingTo.sender_username || 'friend'}</span><strong>{replyingTo.text || 'Shared media'}</strong><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">×</button></div>}
           <form onSubmit={submitMessage} className="composer" ref={composerRef}>
-            <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji">🙂</button>
-            <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach">＋</button>
+            <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji"><UiIcon name="smile" /></button>
+            <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach"><UiIcon name="plus" /></button>
             <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
-            <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message">{recording ? '■' : '🎙'}</button>
-            <input name="text" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
-            <button type="submit" className="send-button" disabled={!activeRoomId}>Send</button>
+            <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message"><UiIcon name={recording ? 'stop' : 'mic'} /></button>
+            <input name="text" enterKeyHint="send" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
+            <button type="submit" className="send-button" disabled={!activeRoomId}><span>Send</span><UiIcon name="send" /></button>
             {emojiOpen && <div className="emoji-picker">{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
           </form>
           {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
@@ -352,3 +352,17 @@ function MessageStatus({ read }) { return <span className={read ? 'message-statu
 function formatDuration(seconds) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
 function renderText(text, keyPrefix) { return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => { const emoji = findChatikaEmoji(part); return emoji ? <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} /> : part; }); }
 function ChatikaEmoji({ emoji }) { return <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label}>{emoji.glyph}</span>; }
+
+function UiIcon({ name }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (name === 'phone') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M7.1 3.8 9.3 8l-2 2.2a16 16 0 0 0 6.5 6.5l2.2-2 4.2 2.2-.8 3.2c-.2.8-.9 1.3-1.7 1.3C9.4 20.9 3.1 14.6 2.6 6.3c0-.8.5-1.5 1.3-1.7l3.2-.8Z" /></svg>;
+  if (name === 'video') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="3" y="6" width="12" height="12" rx="3" /><path {...common} d="m15 10 5-3v10l-5-3" /></svg>;
+  if (name === 'screen') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="3" y="4" width="18" height="13" rx="2" /><path {...common} d="M8 21h8M12 17v4" /></svg>;
+  if (name === 'menu') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 7h16M4 12h16M4 17h16" /></svg>;
+  if (name === 'close') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m6 6 12 12M18 6 6 18" /></svg>;
+  if (name === 'smile') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle {...common} cx="12" cy="12" r="9" /><path {...common} d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" /></svg>;
+  if (name === 'plus') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M12 5v14M5 12h14" /></svg>;
+  if (name === 'mic') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="9" y="3" width="6" height="12" rx="3" /><path {...common} d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" /></svg>;
+  if (name === 'stop') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>;
+  return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m4 12 16-8-5.8 16-3.1-6.8L4 12Zm7.1 1.2L20 4" /></svg>;
+}

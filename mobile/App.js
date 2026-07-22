@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import * as ScreenCapture from 'expo-screen-capture';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -90,6 +91,13 @@ export default function App() {
   const restoredPositionsRef = useRef(new Set());
   const { width } = useWindowDimensions();
   const compact = width < 380;
+
+  useEffect(() => {
+    ScreenCapture.preventScreenCaptureAsync('chatika-private-content').catch(() => {});
+    return () => {
+      ScreenCapture.allowScreenCaptureAsync('chatika-private-content').catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -409,7 +417,7 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.3.0</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.2</Text>
     </SafeAreaView>
   );
 }

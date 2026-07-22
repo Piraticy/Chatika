@@ -40,13 +40,13 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
       <form onSubmit={handleSubmit}>
         <label>
           Username
-          <input autoComplete="username" value={form.username} onChange={(e) => update('username', e.target.value)} required minLength={3} />
+          <input autoComplete="username" enterKeyHint="next" value={form.username} onChange={(e) => update('username', e.target.value)} required minLength={3} />
         </label>
 
         <label>
           <span className="label-row"><span>Password</span><small>8+ characters</small></span>
           <span className="password-field">
-            <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={(e) => update('password', e.target.value)} required minLength={8} />
+            <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} enterKeyHint="go" value={form.password} onChange={(e) => update('password', e.target.value)} required minLength={8} />
             <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Hide' : 'Show'}</button>
           </span>
         </label>

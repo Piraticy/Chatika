@@ -5,14 +5,17 @@ import AppLifecyclePrompts from './components/AppLifecyclePrompts';
 import './styles/app.css';
 import { registerPwa } from './pwa';
 
-function syncViewportHeight() {
-  const height = window.visualViewport?.height || window.innerHeight;
-  document.documentElement.style.setProperty('--app-height', `${height}px`);
+function syncViewportFrame() {
+  const viewport = window.visualViewport;
+  document.documentElement.style.setProperty('--app-height', `${Math.round(viewport?.height || window.innerHeight)}px`);
+  document.documentElement.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop || 0)}px`);
 }
 
-syncViewportHeight();
-window.addEventListener('resize', syncViewportHeight, { passive: true });
-window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true });
+syncViewportFrame();
+window.addEventListener('resize', syncViewportFrame, { passive: true });
+window.addEventListener('orientationchange', syncViewportFrame, { passive: true });
+window.visualViewport?.addEventListener('resize', syncViewportFrame, { passive: true });
+window.visualViewport?.addEventListener('scroll', syncViewportFrame, { passive: true });
 
 if (!import.meta.env.DEV) registerPwa();
 
