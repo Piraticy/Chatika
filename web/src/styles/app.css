@@ -465,6 +465,85 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 
+/* Friends, groups, and profile controls */
+.profile-button { border: 0; cursor: pointer; padding: 0; background: transparent; }
+.user-avatar, .user-avatar-image { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: white; object-fit: cover; background: linear-gradient(135deg, var(--forest), #178c96); font-size: .78rem; font-weight: 850; }
+.user-avatar.large, .user-avatar-image.large { width: 43px; height: 43px; }
+.user-avatar.thread, .user-avatar-image.thread { width: 39px; height: 39px; }
+.new-chat-section, .friend-section, .group-section, .system-section { display: grid; gap: 8px; }
+.new-chat-section .sidebar-label button { border: 0; cursor: pointer; padding: 0; color: #168f93; background: transparent; font-size: .62rem; font-weight: 800; }
+.direct-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.direct-form input, .group-form input { min-width: 0; padding: 10px 11px; font-size: .73rem; }
+.direct-form button, .group-form button { border: 0; border-radius: 10px; cursor: pointer; padding: 0 13px; color: var(--forest); background: var(--lime); font-size: .68rem; font-weight: 850; }
+.group-form { display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 12px; padding: 9px; background: rgba(255,255,255,.5); }
+.group-form button { min-height: 38px; color: white; background: var(--forest); }
+.friend-section { min-height: 0; flex: 1 1 auto; }
+.group-section { flex: 0 1 auto; max-height: 160px; }
+.conversation-list { display: grid; gap: 4px; overflow: auto; }
+.conversation-item { display: flex; align-items: center; gap: 10px; width: 100%; border: 1px solid transparent; border-radius: 13px; cursor: pointer; padding: 8px; text-align: left; color: var(--ink); background: transparent; }
+.conversation-item:hover { background: rgba(232,250,251,.72); }
+.conversation-item.active { border-color: #9be4e8; background: #e8fafb; box-shadow: inset 3px 0 0 #00bccc; }
+.conversation-item > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.conversation-item strong, .conversation-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-item strong { font-size: .76rem; }
+.conversation-item small { color: var(--muted); font-size: .61rem; }
+.sidebar-empty, .sidebar-error { margin: 2px 0; color: var(--muted); font-size: .66rem; line-height: 1.4; }
+.sidebar-error { color: #a64b3c; }
+.system-section { padding-top: 10px; border-top: 1px solid var(--line); }
+.system-action { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: 9px; cursor: pointer; padding: 8px 9px; color: var(--ink-soft); background: var(--paper-deep); text-align: left; font-size: .66rem; font-weight: 750; }
+.system-action span { color: #168f93; font-size: .9rem; }
+.system-status { color: var(--muted); font-size: .62rem; line-height: 1.35; }
+.system-status.good { color: #168f93; font-weight: 750; }
+
+@media (max-width: 720px) {
+  html:has(.auth-root), body:has(.auth-root) { overflow: auto; }
+  .auth-root { height: auto; min-height: var(--app-height); overflow-y: auto; justify-content: flex-start; padding-top: max(18px, env(safe-area-inset-top)); padding-bottom: 24px; }
+  .auth-panel { flex: 0 0 auto; margin: auto 0; max-height: none; }
+  .auth-brand-row { margin-bottom: 19px; }
+  .auth-intro { font-size: .86rem; }
+  .auth-panel input { min-height: 48px; font-size: 16px; }
+  .chat-root { padding: 0; background: #f7fbff; }
+  .thread { height: var(--app-height); border: 0; border-radius: 0; padding: max(10px, env(safe-area-inset-top)) 14px max(10px, env(safe-area-inset-bottom)); box-shadow: none; background: #f7fbff; backdrop-filter: none; }
+  .thread-head { min-height: 61px; padding-bottom: 10px; }
+  .thread-title-wrap { min-width: 0; }
+  .thread-head h2 { max-width: 168px; font-size: 1.12rem; }
+  .thread-head small { max-width: 180px; font-size: .64rem; }
+  .thread-actions { margin-left: auto; }
+  .call-button, .share-button, .icon-button { width: 36px; height: 36px; min-width: 36px; border-radius: 50%; font-size: 1rem; }
+  .call-button span, .share-button span { display: none; }
+  .messages { padding: 10px 0; gap: 8px; }
+  .msg { max-width: 78%; border-radius: 16px 16px 16px 5px; padding: 8px 10px; }
+  .msg.mine { border-radius: 16px 16px 5px 16px; }
+  .msg p { font-size: .86rem; }
+  .msg-sender { display: none; }
+  .message-meta time { font-size: .56rem; }
+  .composer { grid-template-columns: 36px 36px 36px minmax(0, 1fr) 56px; gap: 5px; padding-top: 9px; background: #f7fbff; }
+  .composer input { min-height: 43px; border-radius: 22px; padding: 11px 13px; font-size: 16px !important; }
+  .composer button, .composer-action, .emoji-toggle, .composer .send-button { min-width: 0; height: 43px; border-radius: 50%; padding: 0; }
+  .composer .send-button { border-radius: 22px; font-size: .7rem; }
+  .recording-preview { padding-bottom: 2px; }
+  .sidebar { top: 0; right: 0; bottom: 0; left: 0; width: 100vw; border: 0; border-radius: 0; padding: max(18px, env(safe-area-inset-top)) 20px max(18px, env(safe-area-inset-bottom)); background: #f7fbff; box-shadow: none; }
+  .sidebar-head { padding-bottom: 6px; }
+  .sidebar-close { width: 38px; height: 38px; }
+  .friend-section { flex: 1 1 auto; overflow: hidden; }
+  .conversation-list { max-height: none; }
+  .conversation-item { padding: 10px 7px; }
+  .conversation-item strong { font-size: .88rem; }
+  .conversation-item small { font-size: .68rem; }
+  .group-section { max-height: 180px; }
+  .system-section { margin-top: 2px; }
+  .mobile-menu-backdrop { display: none; }
+}
+
+@media (max-width: 720px) and (max-height: 720px) {
+  .auth-root { padding-top: 12px; }
+  .auth-panel { padding: 18px 16px; }
+  .auth-brand-row { margin-bottom: 12px; }
+  .auth-intro { margin-bottom: 13px; font-size: .76rem; }
+  .mode-switch { margin-bottom: 13px; }
+  .auth-footer { display: flex; margin-top: 12px; }
+}
+
 @media (pointer: coarse) {
   input, textarea, select { font-size: 16px !important; }
 }

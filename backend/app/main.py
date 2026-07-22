@@ -1,9 +1,11 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import update
 
 from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
@@ -17,8 +19,9 @@ from app.api.routes_presence_ws import router as realtime_router
 from app.api.routes_push import router as push_router
 from app.api.routes_realtime_config import router as realtime_config_router
 from app.core.config import settings
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
 from app.models.base import Base
+from app.models.entities import User
 from app.services.ws_manager import ws_manager
 
 app = FastAPI(title=settings.app_name)
@@ -68,6 +71,13 @@ if icons_root.exists():
 async def on_startup() -> None:
     if settings.auto_create_schema:
         Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        db.execute(
+            update(User)
+            .where(User.is_online.is_(True))
+            .values(is_online=False, last_seen_at=datetime.now(timezone.utc))
+        )
+        db.commit()
     await ws_manager.start()
 
 

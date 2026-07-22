@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -18,12 +18,31 @@ import * as Updates from 'expo-updates';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000/api/v1';
 const ACCESS_KEY = 'chatika_mobile_access';
 const REFRESH_KEY = 'chatika_mobile_refresh';
+const PUSH_PERMISSION_KEY = 'chatika_mobile_push_permission';
+
+function lastRoomKey(userId) {
+  return `chatika_mobile_last_room:${userId}`;
+}
+
+function readingPositionKey(userId, roomId) {
+  return `chatika_mobile_reading_position:${userId}:${roomId}`;
+}
+
+function formatLastSeen(value) {
+  if (!value) return 'Last seen unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Last seen unavailable';
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (elapsedMinutes < 1) return 'Last seen just now';
+  if (elapsedMinutes < 60) return `Last seen ${elapsedMinutes}m ago`;
+  if (elapsedMinutes < 1440) return `Last seen ${Math.floor(elapsedMinutes / 60)}h ago`;
+  return `Last seen ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -63,6 +82,12 @@ export default function App() {
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
+  const [contactUsername, setContactUsername] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [groupUsers, setGroupUsers] = useState('');
+  const [groupComposerOpen, setGroupComposerOpen] = useState(false);
+  const messageListRef = useRef(null);
+  const restoredPositionsRef = useRef(new Set());
   const { width } = useWindowDimensions();
   const compact = width < 380;
 
@@ -81,29 +106,19 @@ export default function App() {
   }, [token, refreshToken]);
 
   useEffect(() => {
+    if (me?.id && activeRoomId) {
+      AsyncStorage.setItem(lastRoomKey(me.id), activeRoomId);
+    }
+  }, [me?.id, activeRoomId]);
+
+  useEffect(() => {
     if (__DEV__) return;
 
     Updates.checkForUpdateAsync()
-      .then((result) => {
+      .then(async (result) => {
         if (!result.isAvailable) return;
-        Alert.alert(
-          'Chatika update available',
-          'Update now for the latest improvements, or continue and apply it on your next restart.',
-          [
-            { text: 'Later', style: 'cancel' },
-            {
-              text: 'Update now',
-              onPress: async () => {
-                try {
-                  await Updates.fetchUpdateAsync();
-                  await Updates.reloadAsync();
-                } catch (_error) {
-                  // The update will be retried on the next app launch.
-                }
-              }
-            }
-          ]
-        );
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
       })
       .catch(() => undefined);
   }, []);
@@ -114,7 +129,12 @@ export default function App() {
 
     const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
-    if (!activeRoomId && roomData[0]) setActiveRoomId(roomData[0].id);
+    const savedRoomId = await AsyncStorage.getItem(lastRoomKey(meData.id));
+    setActiveRoomId((currentRoomId) => {
+      if (currentRoomId && roomData.some((room) => room.id === currentRoomId)) return currentRoomId;
+      if (savedRoomId && roomData.some((room) => room.id === savedRoomId)) return savedRoomId;
+      return roomData[0]?.id || '';
+    });
   }
 
   async function tryRefresh() {
@@ -147,8 +167,10 @@ export default function App() {
   async function registerPushToken(currentToken) {
     const permissions = await Notifications.getPermissionsAsync();
     let permission = permissions.status;
-    if (permission !== 'granted') {
+    const storedPermission = await AsyncStorage.getItem(PUSH_PERMISSION_KEY);
+    if (permission !== 'granted' && !storedPermission) {
       permission = (await Notifications.requestPermissionsAsync()).status;
+      await AsyncStorage.setItem(PUSH_PERMISSION_KEY, permission);
     }
     if (permission !== 'granted') return;
 
@@ -187,6 +209,21 @@ export default function App() {
     return () => socket.close();
   }, [token, activeRoomId]);
 
+  useEffect(() => {
+    if (!me?.id || !activeRoomId || !messageListRef.current) return;
+    const key = readingPositionKey(me.id, activeRoomId);
+    if (restoredPositionsRef.current.has(key)) return;
+
+    AsyncStorage.getItem(key).then((savedPositionValue) => {
+      const savedPosition = Number(savedPositionValue);
+      messageListRef.current?.scrollToOffset({
+        offset: Number.isFinite(savedPosition) ? savedPosition : 0,
+        animated: false
+      });
+      restoredPositionsRef.current.add(key);
+    });
+  }, [me?.id, activeRoomId, messages.length]);
+
   async function submitAuth() {
     setError('');
     try {
@@ -202,15 +239,37 @@ export default function App() {
     }
   }
 
-  async function createRoom() {
+  async function startDirectChat() {
+    const username = contactUsername.trim();
+    if (!username) return;
     try {
-      const room = await api('/chat/rooms', {
+      const room = await api('/chat/direct', {
         method: 'POST',
         token,
-        body: { name: 'New Mobile Room', participant_ids: [] }
+        body: { username }
       });
       setRooms((prev) => [room, ...prev]);
       setActiveRoomId(room.id);
+      setContactUsername('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function createGroup() {
+    const usernames = groupUsers.split(',').map((value) => value.trim()).filter(Boolean);
+    if (!groupName.trim() || !usernames.length) return;
+    try {
+      const room = await api('/chat/groups', {
+        method: 'POST',
+        token,
+        body: { name: groupName.trim(), usernames }
+      });
+      setRooms((prev) => [room, ...prev]);
+      setActiveRoomId(room.id);
+      setGroupName('');
+      setGroupUsers('');
+      setGroupComposerOpen(false);
     } catch (e) {
       setError(e.message);
     }
@@ -243,6 +302,21 @@ export default function App() {
   }
 
   const activeRoom = useMemo(() => rooms.find((r) => r.id === activeRoomId), [rooms, activeRoomId]);
+  const activeOther = useMemo(
+    () => activeRoom?.participants?.find((participant) => participant.id !== me.id),
+    [activeRoom, me.id]
+  );
+  const activePresenceText = activeOther
+    ? (activeOther.is_online ? `@${activeOther.username} · Online now` : `@${activeOther.username} · ${formatLastSeen(activeOther.last_seen_at)}`)
+    : 'Private room';
+
+  function saveReadingPosition(event) {
+    if (!me?.id || !activeRoomId) return;
+    AsyncStorage.setItem(
+      readingPositionKey(me.id, activeRoomId),
+      String(event.nativeEvent.contentOffset.y)
+    );
+  }
 
   if (!me) {
     return (
@@ -280,10 +354,16 @@ export default function App() {
       <View style={styles.header}>
         <View style={styles.headerIdentity}><Image source={require('./assets/icon.png')} style={styles.headerLogo} /><View><Text style={styles.brandMini}>@{me.username}</Text><Text style={styles.onlineText}>● Online now</Text></View></View>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={createRoom} style={styles.newRoomBtn}><Text style={styles.newRoomTxt}>+ Room</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setGroupComposerOpen((value) => !value)} style={styles.newRoomBtn}><Text style={styles.newRoomTxt}>+ Group</Text></TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Text style={styles.logoutTxt}>Log out</Text></TouchableOpacity>
         </View>
       </View>
+
+      <View style={styles.directChatRow}>
+        <TextInput style={styles.directChatInput} value={contactUsername} placeholder="Add @username" placeholderTextColor="#8ea0be" autoCapitalize="none" onChangeText={setContactUsername} />
+        <TouchableOpacity onPress={startDirectChat} style={styles.directChatButton}><Text style={styles.directChatButtonText}>Chat</Text></TouchableOpacity>
+      </View>
+      {groupComposerOpen && <View style={styles.groupComposer}><TextInput style={styles.directChatInput} value={groupName} placeholder="Group name" placeholderTextColor="#8ea0be" onChangeText={setGroupName} /><TextInput style={styles.directChatInput} value={groupUsers} placeholder="@friend1, @friend2" placeholderTextColor="#8ea0be" autoCapitalize="none" onChangeText={setGroupUsers} /><TouchableOpacity onPress={createGroup} style={styles.directChatButton}><Text style={styles.directChatButtonText}>Create group</Text></TouchableOpacity></View>}
 
       <FlatList
         horizontal
@@ -300,11 +380,15 @@ export default function App() {
       />
 
       <Text style={styles.roomTitle}>{activeRoom ? activeRoom.name : 'No room selected'}</Text>
+      <Text style={styles.roomPresence}>{activePresenceText}</Text>
 
       <FlatList
+        ref={messageListRef}
         style={styles.messageList}
         data={messages}
         inverted
+        onScrollEndDrag={saveReadingPosition}
+        onMomentumScrollEnd={saveReadingPosition}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={[styles.msg, item.sender_id === me.id ? styles.msgMine : styles.msgOther]}>
@@ -325,7 +409,7 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.2.0</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.3.0</Text>
     </SafeAreaView>
   );
 }
@@ -423,6 +507,11 @@ const styles = StyleSheet.create({
   },
   logoutBtn: { borderWidth: 1, borderColor: '#31455b', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 },
   logoutTxt: { color: '#ff9c82', fontSize: 11, fontWeight: '800' },
+  directChatRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  directChatInput: { flex: 1, borderWidth: 1, borderColor: '#31455b', borderRadius: 10, color: '#f7fbff', paddingHorizontal: 11, paddingVertical: 9 },
+  directChatButton: { borderRadius: 10, backgroundColor: '#00f0ff', justifyContent: 'center', paddingHorizontal: 13 },
+  directChatButtonText: { color: '#0a1221', fontWeight: '800', fontSize: 12 },
+  groupComposer: { gap: 7, marginBottom: 10 },
   roomPill: {
     backgroundColor: '#122038',
     borderRadius: 999,
@@ -439,8 +528,9 @@ const styles = StyleSheet.create({
   roomTitle: {
     color: '#9cb1bd',
     marginTop: 10,
-    marginBottom: 8
+    marginBottom: 2
   },
+  roomPresence: { color: '#6dffb0', fontSize: 12, marginBottom: 8 },
   messageList: {
     flex: 1
   },

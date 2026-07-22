@@ -12,6 +12,7 @@ class User(Base, UUIDTimeMixin):
 
     username: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     phone_number: Mapped[Optional[str]] = mapped_column(String(20), unique=True, index=True, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)

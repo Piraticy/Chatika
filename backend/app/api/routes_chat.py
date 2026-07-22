@@ -9,7 +9,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput
+from app.schemas.chat import CreateGroupInput, CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -31,6 +31,7 @@ def _room_participants(db: Session, room_id: str) -> list[RoomParticipantOut]:
         RoomParticipantOut(
             id=user.id,
             username=user.username,
+            avatar_url=user.avatar_url,
             is_online=user.is_online,
             last_seen_at=user.last_seen_at,
         )
@@ -39,15 +40,63 @@ def _room_participants(db: Session, room_id: str) -> list[RoomParticipantOut]:
     ]
 
 
-def _room_out(db: Session, room: ChatRoom) -> RoomOut:
+def _room_out(db: Session, room: ChatRoom, viewer_id: str | None = None) -> RoomOut:
     participants = _room_participants(db, room.id)
+    name = room.name
+    if not room.is_group and viewer_id:
+        other_user = next((participant for participant in participants if participant.id != viewer_id), None)
+        if other_user:
+            name = other_user.username
     return RoomOut(
         id=room.id,
-        name=room.name,
+        name=name,
         is_group=room.is_group,
         created_by=room.created_by,
         participant_ids=[participant.id for participant in participants],
         participants=participants,
+    )
+
+
+def _find_direct_room(db: Session, user_id: str, other_user_id: str) -> ChatRoom | None:
+    memberships = db.scalars(select(ChatRoomMember).where(ChatRoomMember.user_id == user_id)).all()
+    room_ids = [membership.room_id for membership in memberships]
+    if not room_ids:
+        return None
+
+    rooms = db.scalars(
+        select(ChatRoom).where(ChatRoom.id.in_(room_ids), ChatRoom.is_group.is_(False))
+    ).all()
+    for room in rooms:
+        if set(_room_member_ids(db, room.id)) == {user_id, other_user_id}:
+            return room
+    return None
+
+
+def _find_approved_user(db: Session, username: str) -> User | None:
+    cleaned_username = username.strip().lstrip('@')
+    return db.scalar(
+        select(User).where(
+            func.lower(User.username) == cleaned_username.lower(),
+            User.is_approved.is_(True),
+        )
+    )
+
+
+async def _notify_room_added(room: ChatRoom, current_user: User, recipient_ids: list[str], db: Session) -> None:
+    await asyncio.gather(
+        *(
+            ws_manager.send_user(
+                recipient_id,
+                {
+                    'event': 'room:invite',
+                    'data': {
+                        'room': _room_out(db, room, recipient_id).model_dump(mode='json'),
+                        'invited_by': current_user.username,
+                    },
+                },
+            )
+            for recipient_id in recipient_ids
+        ),
     )
 
 
@@ -97,6 +146,69 @@ def create_room(data: CreateRoomInput, current_user: User = Depends(get_current_
     return _room_out(db, room)
 
 
+@router.post('/direct', response_model=RoomOut)
+async def start_direct_chat(
+    data: StartDirectChatInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RoomOut:
+    other_user = _find_approved_user(db, data.username)
+    if not other_user:
+        raise HTTPException(status_code=404, detail='Chatika user not found')
+    if other_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail='Choose another username to start a chat')
+
+    existing_room = _find_direct_room(db, current_user.id, other_user.id)
+    if existing_room:
+        return _room_out(db, existing_room, current_user.id)
+
+    room = ChatRoom(name='Direct chat', is_group=False, created_by=current_user.id)
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    db.add_all([
+        ChatRoomMember(room_id=room.id, user_id=current_user.id, role='owner'),
+        ChatRoomMember(room_id=room.id, user_id=other_user.id, role='member'),
+    ])
+    db.commit()
+
+    await _notify_room_added(room, current_user, [other_user.id], db)
+    return _room_out(db, room, current_user.id)
+
+
+@router.post('/groups', response_model=RoomOut)
+async def create_group(
+    data: CreateGroupInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RoomOut:
+    usernames = list(dict.fromkeys(username.strip().lstrip('@') for username in data.usernames if username.strip()))
+    if not usernames:
+        raise HTTPException(status_code=400, detail='Add at least one Chatika username')
+
+    members: list[User] = []
+    for username in usernames:
+        user = _find_approved_user(db, username)
+        if not user:
+            raise HTTPException(status_code=404, detail=f'Chatika user @{username} was not found')
+        if user.id != current_user.id:
+            members.append(user)
+    members_by_id = {member.id: member for member in members}
+    if not members_by_id:
+        raise HTTPException(status_code=400, detail='Add at least one other Chatika user')
+
+    room = ChatRoom(name=data.name.strip(), is_group=True, created_by=current_user.id)
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    db.add(ChatRoomMember(room_id=room.id, user_id=current_user.id, role='owner'))
+    db.add_all(ChatRoomMember(room_id=room.id, user_id=user.id, role='member') for user in members_by_id.values())
+    db.commit()
+
+    await _notify_room_added(room, current_user, list(members_by_id), db)
+    return _room_out(db, room, current_user.id)
+
+
 @router.post('/rooms/{room_id}/invite', response_model=RoomOut)
 async def invite_member(
     room_id: str,
@@ -118,8 +230,8 @@ async def invite_member(
         raise HTTPException(status_code=404, detail='Room not found')
 
     username = data.username.strip().lstrip('@')
-    invitee = db.scalar(select(User).where(func.lower(User.username) == username.lower()))
-    if not invitee or not invitee.is_approved:
+    invitee = _find_approved_user(db, username)
+    if not invitee:
         raise HTTPException(status_code=404, detail='Approved username not found')
     if invitee.id == current_user.id:
         raise HTTPException(status_code=400, detail='You are already in this room')
@@ -140,18 +252,8 @@ async def invite_member(
     db.commit()
     db.refresh(room)
 
-    room_out = _room_out(db, room)
-    await ws_manager.send_user(
-        invitee.id,
-        {
-            'event': 'room:invite',
-            'data': {
-                'room': room_out.model_dump(mode='json'),
-                'invited_by': current_user.username,
-            },
-        },
-    )
-    return room_out
+    await _notify_room_added(room, current_user, [invitee.id], db)
+    return _room_out(db, room, current_user.id)
 
 
 @router.get('/rooms', response_model=list[RoomOut])
@@ -161,7 +263,7 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     if not room_ids:
         return []
     rooms = db.scalars(select(ChatRoom).where(ChatRoom.id.in_(room_ids))).all()
-    return [_room_out(db, room) for room in rooms]
+    return [_room_out(db, room, current_user.id) for room in rooms]
 
 
 @router.post('/messages', response_model=MessageOut)

@@ -13,9 +13,19 @@ class InviteMemberInput(BaseModel):
     username: str = Field(min_length=3, max_length=40)
 
 
+class StartDirectChatInput(BaseModel):
+    username: str = Field(min_length=3, max_length=40)
+
+
+class CreateGroupInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    usernames: list[str] = Field(min_length=1, max_length=99)
+
+
 class RoomParticipantOut(BaseModel):
     id: str
     username: str
+    avatar_url: Optional[str] = None
     is_online: bool
     last_seen_at: Optional[datetime] = None
 

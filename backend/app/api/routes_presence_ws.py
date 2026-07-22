@@ -197,9 +197,10 @@ async def ws_endpoint(websocket: WebSocket) -> None:
         pass
     finally:
         ws_manager.disconnect(user.id, websocket)
-        user.is_online = False
-        user.last_seen_at = datetime.now(timezone.utc)
-        db.add(user)
-        db.commit()
-        await _broadcast_presence(db, user)
+        if not ws_manager.has_connections(user.id):
+            user.is_online = False
+            user.last_seen_at = datetime.now(timezone.utc)
+            db.add(user)
+            db.commit()
+            await _broadcast_presence(db, user)
         db.close()

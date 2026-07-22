@@ -7,14 +7,30 @@ const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '�
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
 
 function formatLastSeen(value) {
-  if (!value) return 'Last seen unavailable';
+  if (!value) return 'Last seen recently';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Last seen unavailable';
-  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
-  if (elapsedMinutes < 1) return 'Last seen just now';
-  if (elapsedMinutes < 60) return `Last seen ${elapsedMinutes}m ago`;
-  if (elapsedMinutes < 1440) return `Last seen ${Math.floor(elapsedMinutes / 60)}h ago`;
+  if (Number.isNaN(date.getTime())) return 'Last seen recently';
+  const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (minutes < 1) return 'Last seen just now';
+  if (minutes < 60) return `Last seen ${minutes}m ago`;
+  if (minutes < 1440) return `Last seen ${Math.floor(minutes / 60)}h ago`;
   return `Last seen ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function readingPositionKey(userId, roomId) {
+  return `chatika_reading_position:${userId}:${roomId}`;
+}
+
+function roomLabel(room, userId) {
+  if (room.is_group) return room.name;
+  return room.participants?.find((participant) => participant.id !== userId)?.username || room.name;
+}
+
+function Avatar({ user, size = 'default' }) {
+  const initial = (user?.username || '?').slice(0, 1).toUpperCase();
+  return user?.avatar_url
+    ? <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />
+    : <span className={`user-avatar ${size}`}>{initial}</span>;
 }
 
 export default function ChatLayout({
@@ -25,7 +41,11 @@ export default function ChatLayout({
   readByMessage,
   onSelectRoom,
   onSend,
-  onCreateRoom,
+  onSendMedia,
+  mediaError,
+  onStartDirect,
+  onCreateGroup,
+  onChangeProfilePhoto,
   statusText,
   isAdmin,
   pendingUsers,
@@ -42,85 +62,49 @@ export default function ChatLayout({
   callActive,
   onStartCall,
   shareActive,
-  onShareScreen,
-  onInvite,
-  inviteStatus,
-  onSendMedia,
-  mediaError
+  onShareScreen
 }) {
-  const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
+  const activeRoom = rooms.find((room) => room.id === activeRoomId) || null;
   const activeOthers = useMemo(
     () => (activeRoom?.participants || []).filter((participant) => participant.id !== me.id),
     [activeRoom, me.id]
   );
-  const activePresenceText = useMemo(() => {
-    if (!activeRoom) return 'Pick a room to begin';
-    if (!activeRoom.is_group && activeOthers[0]) {
-      const participant = activeOthers[0];
-      return participant.is_online ? `@${participant.username} · Online now` : `@${participant.username} · ${formatLastSeen(participant.last_seen_at)}`;
-    }
-    const onlineCount = activeOthers.filter((participant) => participant.is_online).length;
-    return `${onlineCount} online · ${activeOthers.length || 1} participant${activeOthers.length === 1 ? '' : 's'}`;
-  }, [activeRoom, activeOthers]);
+  const activeContact = activeOthers[0];
+  const activePresenceText = activeRoom?.is_group
+    ? `${activeOthers.filter((participant) => participant.is_online).length} online · ${activeOthers.length} members`
+    : activeContact
+      ? (activeContact.is_online ? 'Online now' : formatLastSeen(activeContact.last_seen_at))
+      : 'Private Chatika chat';
+  const directRooms = rooms.filter((room) => !room.is_group);
+  const groupRooms = rooms.filter((room) => room.is_group);
   const messagesRef = useRef(null);
+  const restoredPositionsRef = useRef(new Set());
   const composerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const profileInputRef = useRef(null);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
+  const recorderStreamRef = useRef(null);
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [reactionMessageId, setReactionMessageId] = useState(null);
   const [recording, setRecording] = useState(false);
-  const [recordingError, setRecordingError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const fileInputRef = useRef(null);
-  const recorderRef = useRef(null);
-  const recorderChunksRef = useRef([]);
-  const recorderStreamRef = useRef(null);
+  const [localError, setLocalError] = useState('');
+  const [groupOpen, setGroupOpen] = useState(false);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
-  const groupedMessages = useMemo(() => {
-    const grouped = [];
-    let previous = null;
-
-    for (const msg of orderedMessages) {
-      const currentTime = new Date(msg.created_at).getTime();
-      const previousTime = previous ? new Date(previous.created_at).getTime() : 0;
-      const withinWindow = previous ? Math.abs(currentTime - previousTime) < 5 * 60 * 1000 : false;
-      const sameSender = previous ? previous.sender_id === msg.sender_id : false;
-
-      grouped.push({
-        ...msg,
-        startsGroup: !sameSender || !withinWindow
-      });
-      previous = msg;
-    }
-    return grouped;
-  }, [orderedMessages]);
-  const typingText = useMemo(() => {
-    if (!typingUsers?.length) return '';
-    if (typingUsers.length === 1) return 'Someone is typing...';
-    return `${typingUsers.length} people are typing...`;
-  }, [typingUsers]);
+  const typingText = typingUsers?.length ? (typingUsers.length === 1 ? 'Typing…' : `${typingUsers.length} people are typing…`) : '';
 
   useEffect(() => {
-    if (!messagesRef.current) return;
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-  }, [orderedMessages, activeRoomId]);
-
-  useEffect(() => {
-    function onDocumentClick(event) {
-      if (!composerRef.current) return;
-      if (!composerRef.current.contains(event.target)) {
-        setEmojiOpen(false);
-      }
-      if (!event.target.closest?.('.msg')) setReactionMessageId(null);
-    }
-    document.addEventListener('click', onDocumentClick);
-    return () => document.removeEventListener('click', onDocumentClick);
-  }, []);
-
-  useEffect(() => () => {
-    recorderRef.current?.stop();
-    recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
+    if (!messagesRef.current || !activeRoomId) return;
+    const key = readingPositionKey(me.id, activeRoomId);
+    if (restoredPositionsRef.current.has(key)) return;
+    const saved = localStorage.getItem(key);
+    const position = saved === null ? Number.NaN : Number(saved);
+    messagesRef.current.scrollTop = Number.isFinite(position) ? position : messagesRef.current.scrollHeight;
+    restoredPositionsRef.current.add(key);
+  }, [orderedMessages, activeRoomId, me.id]);
 
   useEffect(() => {
     if (!recording) return undefined;
@@ -128,8 +112,49 @@ export default function ChatLayout({
     return () => window.clearInterval(timer);
   }, [recording]);
 
-  function submitMessage(e) {
-    e.preventDefault();
+  useEffect(() => () => {
+    recorderRef.current?.stop();
+    recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  function selectConversation(roomId) {
+    onSelectRoom(roomId);
+    setSidebarOpen(false);
+  }
+
+  async function submitDirect(event) {
+    event.preventDefault();
+    const username = String(new FormData(event.currentTarget).get('username') || '').trim();
+    if (!username) return;
+    setLocalError('');
+    try {
+      await onStartDirect(username);
+      event.currentTarget.reset();
+      setSidebarOpen(false);
+    } catch (error) {
+      setLocalError(error.message || 'Could not start this chat.');
+    }
+  }
+
+  async function submitGroup(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('name') || '').trim();
+    const usernames = String(form.get('usernames') || '').split(',').map((value) => value.trim()).filter(Boolean);
+    if (!name || !usernames.length) return;
+    setLocalError('');
+    try {
+      await onCreateGroup(name, usernames);
+      event.currentTarget.reset();
+      setGroupOpen(false);
+      setSidebarOpen(false);
+    } catch (error) {
+      setLocalError(error.message || 'Could not create this group.');
+    }
+  }
+
+  function submitMessage(event) {
+    event.preventDefault();
     const text = draft.trim();
     if (!text || !activeRoomId) return;
     onSend(text);
@@ -138,26 +163,8 @@ export default function ChatLayout({
     setEmojiOpen(false);
   }
 
-  function submitRoom(e) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const name = String(form.get('name') || '').trim();
-    const ids = String(form.get('participant_ids') || '')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-    if (!name) return;
-    onCreateRoom(name, ids);
-    e.currentTarget.reset();
-  }
-
-  function submitInvite(e) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const username = String(form.get('username') || '').trim();
-    if (!username || !activeRoomId) return;
-    onInvite(username);
-    e.currentTarget.reset();
+  function saveReadingPosition(event) {
+    if (activeRoomId) localStorage.setItem(readingPositionKey(me.id, activeRoomId), String(event.currentTarget.scrollTop));
   }
 
   function addEmoji(emoji) {
@@ -177,24 +184,21 @@ export default function ChatLayout({
       recorderRef.current?.stop();
       return;
     }
-    setRecordingError('');
+    setLocalError('');
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      setRecordingError('Audio messages are not supported in this browser.');
+      setLocalError('Audio messages are not supported in this browser.');
       return;
     }
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const supportedType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg'].find((type) => window.MediaRecorder.isTypeSupported?.(type));
-      const recorder = supportedType ? new MediaRecorder(stream, { mimeType: supportedType }) : new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream);
       recorderChunksRef.current = [];
       recorderStreamRef.current = stream;
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => event.data.size && recorderChunksRef.current.push(event.data);
       recorder.onstop = () => {
         const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
-        onSendMedia?.(new File([blob], `voice-message-${Date.now()}.${extension}`, { type: blob.type }), 'voice');
+        onSendMedia?.(new File([blob], `voice-message-${Date.now()}.webm`, { type: blob.type }), 'voice');
         stream.getTracks().forEach((track) => track.stop());
         recorderStreamRef.current = null;
         recorderRef.current = null;
@@ -202,41 +206,16 @@ export default function ChatLayout({
         setRecordingSeconds(0);
       };
       recorder.start();
-      setRecordingSeconds(0);
       setRecording(true);
+      setRecordingSeconds(0);
     } catch (error) {
-      setRecordingError(error.message || 'Microphone permission was not granted.');
+      setLocalError(error.message || 'Microphone permission was not granted.');
     }
   }
 
-  function reactionSummary(reactionUsers) {
-    const src = reactionUsers || {};
-    return Object.entries(src)
-      .map(([emoji, users]) => ({
-        emoji,
-        count: Array.isArray(users) ? users.length : 0,
-        mine: Array.isArray(users) ? users.includes(me.id) : false
-      }))
-      .filter((item) => item.count > 0);
-  }
-
-  function handleMessageClick(event, messageId) {
-    if (event.target.closest?.('button, a, video, audio, input')) return;
-    setReactionMessageId((current) => (current === messageId ? null : messageId));
-  }
-
-  function chooseReaction(event, messageId, emoji) {
-    event.stopPropagation();
+  function chooseReaction(messageId, emoji) {
     onReact?.(messageId, emoji);
     setReactionMessageId(null);
-  }
-
-  function renderText(text, keyPrefix = 'chatika-text') {
-    return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => {
-      const emoji = findChatikaEmoji(part);
-      if (!emoji) return part;
-      return <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} />;
-    });
   }
 
   return (
@@ -244,207 +223,96 @@ export default function ChatLayout({
       <button className="mobile-menu-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
       <aside className={sidebarOpen ? 'sidebar glass open' : 'sidebar glass'}>
         <div className="sidebar-head">
-          <img src="/logo.svg" alt="Chatika" className="mini-logo" />
-          <div className="identity">
-            <h2>@{me.username}</h2>
-            <small>{statusText}</small>
-          </div>
+          <button className="profile-button" type="button" onClick={() => profileInputRef.current?.click()} aria-label="Change profile picture"><Avatar user={me} size="large" /></button>
+          <input ref={profileInputRef} className="file-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const [file] = event.target.files || []; if (file) onChangeProfilePhoto?.(file).catch((error) => setLocalError(error.message)); event.target.value = ''; }} />
+          <div className="identity"><h2>@{me.username}</h2><small>{statusText}</small></div>
           <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation">×</button>
         </div>
 
-        <div className="sidebar-label"><span>YOUR ROOMS</span><span>{rooms.length} total</span></div>
+        <section className="new-chat-section">
+          <div className="sidebar-label"><span>NEW CHAT</span><button type="button" onClick={() => setGroupOpen((value) => !value)}>New group</button></div>
+          <form onSubmit={submitDirect} className="direct-form"><input name="username" placeholder="Add @username" required /><button type="submit">Chat</button></form>
+          {groupOpen && <form onSubmit={submitGroup} className="group-form"><input name="name" placeholder="Group name" required /><input name="usernames" placeholder="@friend1, @friend2" required /><button type="submit">Create group</button></form>}
+        </section>
 
-        {notificationStatus !== 'on' && (
-          <button className="notification-prompt" type="button" onClick={onEnableNotifications} disabled={notificationStatus === 'loading'}>
-            <span className="notification-prompt-icon">⌁</span>
-            <span>
-              <strong>{notificationStatus === 'loading' ? 'Enabling alerts…' : 'Enable notifications'}</strong>
-              <small>{notificationStatus && notificationStatus !== 'off' && notificationStatus !== 'loading' ? notificationStatus : 'Get messages and calls while Chatika is closed.'}</small>
-            </span>
-          </button>
-        )}
-
-        <form onSubmit={submitRoom} className="new-room">
-          <input name="name" placeholder="New room name" required />
-          <input name="participant_ids" placeholder="Participant IDs · optional" />
-          <button type="submit"><span>＋</span> Create room</button>
-        </form>
-
-        <form onSubmit={submitInvite} className="invite-form">
-          <div className="sidebar-label"><span>INVITE TO ROOM</span><span>{activeRoomId ? 'ready' : 'select a room'}</span></div>
-          <div className="invite-row">
-            <input name="username" placeholder="@username" disabled={!activeRoomId} required />
-            <button type="submit" disabled={!activeRoomId}>Invite</button>
+        <section className="friend-section">
+          <div className="sidebar-label"><span>FRIENDS</span><span>{directRooms.length}</span></div>
+          <div className="conversation-list">
+            {directRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} onClick={() => selectConversation(room.id)} />)}
+            {!directRooms.length && <p className="sidebar-empty">Add a username to begin a private chat.</p>}
           </div>
-          {inviteStatus && <small className={inviteStatus.error ? 'invite-status error' : 'invite-status'}>{inviteStatus.text}</small>}
-        </form>
+        </section>
 
-        <div className="room-list">
-          {rooms.map((room) => (
-            <button
-              key={room.id}
-              className={room.id === activeRoomId ? 'room-item active' : 'room-item'}
-              onClick={() => onSelectRoom(room.id)}
-            >
-              <span className="room-name">{room.name}</span>
-              <small>{room.is_group ? 'Group' : room.participants?.find((participant) => participant.id !== me.id)?.is_online ? 'Online' : 'Offline'}</small>
-            </button>
-          ))}
-        </div>
+        <section className="group-section">
+          <div className="sidebar-label"><span>GROUPS</span><span>{groupRooms.length}</span></div>
+          <div className="conversation-list">
+            {groupRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} onClick={() => selectConversation(room.id)} />)}
+          </div>
+        </section>
 
-        {isAdmin && (
-          <section className="admin-box">
-            <div className="sidebar-label"><span>ADMIN QUEUE</span><span>{pendingUsers.length}</span></div>
-            {pendingUsers.map((u) => (
-              <div className="pending-user" key={u.id}>
-                <span>{u.username}</span>
-                <button onClick={() => onApprove(u.id)}>Approve</button>
-              </div>
-            ))}
-            <button className="admin-open-button" type="button" onClick={onOpenAdmin}>Open admin control</button>
-          </section>
-        )}
-        <div className="sidebar-foot">
-          <span>{APP_CREDIT} · v{APP_VERSION}</span>
-          <button type="button" onClick={onLogout}>Log out</button>
-        </div>
+        <section className="system-section">
+          <div className="sidebar-label"><span>SYSTEM</span></div>
+          {notificationStatus === 'idle' && <button className="system-action" type="button" onClick={onEnableNotifications}><span>⌁</span> Enable notifications</button>}
+          {notificationStatus === 'on' && <span className="system-status good">● Notifications enabled</span>}
+          {notificationStatus === 'denied' && <span className="system-status">Notifications are blocked in this browser.</span>}
+          {notificationStatus === 'unavailable' && <span className="system-status">Notifications are unavailable here.</span>}
+          <button className="system-action" type="button" onClick={onToggleDataSaver}><span>{dataSaver ? '◒' : '◓'}</span> {dataSaver ? 'Data saver on' : 'High quality mode'}</button>
+        </section>
+
+        {isAdmin && <section className="admin-box"><div className="sidebar-label"><span>ADMIN</span><span>{pendingUsers.length}</span></div>{pendingUsers.map((user) => <div className="pending-user" key={user.id}><span>@{user.username}</span><button onClick={() => onApprove(user.id)}>Approve</button></div>)}<button className="admin-open-button" type="button" onClick={onOpenAdmin}>Open admin control</button></section>}
+        {localError && <p className="sidebar-error">{localError}</p>}
+        <div className="sidebar-foot"><span>{APP_CREDIT} · v{APP_VERSION}</span><button type="button" onClick={onLogout}>Log out</button></div>
       </aside>
 
       <main className="thread glass">
         <header className="thread-head">
           <div className="thread-title-wrap">
-            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">☰</button>
-            <div>
-              <span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP ROOM' : 'DIRECT ROOM') : 'CHATIKA'}</span>
-              <h2>{activeRoom ? activeRoom.name : 'Select a room'}</h2>
-              <small>{activePresenceText}</small>
-            </div>
+            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open conversations">☰</button>
+            {activeContact && <Avatar user={activeContact} size="thread" />}
+            <div><span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP' : 'PRIVATE CHAT') : 'CHATIKA'}</span><h2>{activeRoom ? roomLabel(activeRoom, me.id) : 'Your conversations'}</h2><small>{activePresenceText}</small></div>
           </div>
           <div className="thread-actions">
-            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call">
-              <span>☎</span><span>Audio</span>
-            </button>
-            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('video')} disabled={!activeRoomId} aria-label="Start video call" title="Video call">
-              <span>▣</span><span>Video</span>
-            </button>
-            <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId}>
-              <span className="share-icon">▣</span><span>{shareActive ? 'Sharing' : 'Share screen'}</span>
-            </button>
-            <button type="button" className="icon-button" onClick={onToggleDataSaver} aria-label="Toggle data saver" title="Toggle data saver">
-              {dataSaver ? '◒' : '◓'}
-            </button>
-            <div className="avatar-stack" aria-hidden="true">
-              <span>A</span><span>C</span><span>K</span>
-            </div>
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call">☎<span>Audio</span></button>
+            <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('video')} disabled={!activeRoomId} aria-label="Start video call" title="Video call">▣<span>Video</span></button>
+            <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId} aria-label="Share screen">▣<span>{shareActive ? 'Sharing' : 'Share screen'}</span></button>
           </div>
         </header>
-
-        <div className="thread-notice"><span className="status-dot" /> {dataSaver ? 'Data saver on · lighter media and fewer messages loaded' : 'High quality mode · adaptive to your connection'}</div>
-
-        <section className="messages" ref={messagesRef}>
-          {!orderedMessages.length && (
-            <div className="empty-chat">
-              <h3>No messages yet</h3>
-              <p>Start the conversation in this room.</p>
-            </div>
-          )}
-
-          {groupedMessages.map((m) => (
-            <article key={m.id} className={m.sender_id === me.id ? 'msg mine' : 'msg'} onClick={(event) => handleMessageClick(event, m.id)}>
-              {m.startsGroup && <span className="msg-sender">{m.sender_id === me.id ? 'You' : m.sender_username ? `@${m.sender_username}` : 'Member'}</span>}
-              {m.media_url && <MessageMedia message={m} />}
-              {m.text && <p>{renderText(m.text, m.id)}</p>}
-              {!m.text && !m.media_url && <p>[{m.message_type}]</p>}
-              {reactionMessageId === m.id && (
-                <div className="message-reaction-picker" onClick={(event) => event.stopPropagation()} role="toolbar" aria-label="Choose a reaction">
-                  {REACTION_EMOJIS.map((emoji) => (
-                    <button key={emoji} type="button" onClick={(event) => chooseReaction(event, m.id, emoji)} aria-label={`React ${emoji}`}>
-                      {findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {reactionSummary(m.reaction_users).length > 0 && <div className="reaction-row">
-                <div className="reaction-summary">
-                  {reactionSummary(m.reaction_users).map((item) => (
-                    <span key={`${m.id}-${item.emoji}`} className={item.mine ? 'reaction-chip mine' : 'reaction-chip'}>
-                      {renderText(item.emoji, `${m.id}-reaction`)} {item.count}
-                    </span>
-                  ))}
-                </div>
-              </div>}
-              <div className="message-meta">
-                <time>{new Date(m.created_at).toLocaleTimeString()}</time>
-                {m.sender_id === me.id && <MessageStatus read={Boolean(readByMessage?.[m.id])} />}
-              </div>
-            </article>
-          ))}
+        <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
+          {!orderedMessages.length && <div className="empty-chat"><h3>{activeRoom ? 'Say hello' : 'Start a conversation'}</h3><p>{activeRoom ? 'Messages, calls, and media stay together here.' : 'Add a friend by their Chatika username.'}</p></div>}
+          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} pickerOpen={reactionMessageId === message.id} onToggle={() => setReactionMessageId((value) => value === message.id ? null : message.id)} onReact={chooseReaction} />)}
           {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
-
         <form onSubmit={submitMessage} className="composer" ref={composerRef}>
-          <button
-            type="button"
-            className="emoji-toggle"
-            onClick={() => setEmojiOpen((prev) => !prev)}
-            aria-label="Toggle emoji picker"
-            title="Emoji"
-            disabled={!activeRoomId}
-          >
-            🙂
-          </button>
-          <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} aria-label="Attach photo, audio, or video" title="Attach media" disabled={!activeRoomId}>＋</button>
+          <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji">🙂</button>
+          <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach">＋</button>
           <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
-          <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} aria-label={recording ? 'Stop recording' : 'Record audio message'} title={recording ? 'Stop recording' : 'Record audio message'} disabled={!activeRoomId}>
-            {recording ? '■' : '🎙'}
-          </button>
-          <input
-            name="text"
-            placeholder={activeRoomId ? 'Write a message...' : 'Select a room first'}
-            disabled={!activeRoomId}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              onTyping?.(Boolean(e.target.value.trim()));
-            }}
-            onBlur={() => onTyping?.(false)}
-          />
-          {emojiOpen && (
-            <div className="emoji-picker" role="dialog" aria-label="Emoji picker">
-              <span className="emoji-picker-label">Chatika originals</span>
-              <div className="chatika-emoji-grid">
-                {CHATIKA_EMOJIS.map((emoji) => (
-                  <button key={emoji.code} type="button" className="chatika-emoji-choice" onClick={() => addEmoji(emoji.code)} aria-label={`Add ${emoji.label}`} title={emoji.label}>
-                    <ChatikaEmoji emoji={emoji} />
-                  </button>
-                ))}
-              </div>
-              <span className="emoji-picker-label">Quick picks</span>
-              <div className="quick-emoji-grid">
-                {QUICK_EMOJIS.map((emoji) => (
-                  <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${emoji}`}>
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <button type="submit" className="send-button" disabled={!activeRoomId}>
-            Send <span aria-hidden="true">↗</span>
-          </button>
+          <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message">{recording ? '■' : '🎙'}</button>
+          <input name="text" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
+          <button type="submit" className="send-button" disabled={!activeRoomId}>Send</button>
+          {emojiOpen && <div className="emoji-picker">{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
         </form>
-        {recording && (
-          <div className="recording-preview" role="status" aria-live="polite">
-            <span className="recording-indicator" />
-            <strong>Recording {formatDuration(recordingSeconds)}</strong>
-            <span className="recording-wave" aria-hidden="true">▂▅▃▆▄▇▃▅▂</span>
-            <button type="button" onClick={toggleRecording}>Stop</button>
-          </div>
-        )}
-        {(recordingError || mediaError) && <div className="composer-error">{recordingError || mediaError}</div>}
+        {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
+        {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}
       </main>
     </div>
   );
+}
+
+function ConversationButton({ room, me, active, onClick }) {
+  const other = room.participants?.find((participant) => participant.id !== me.id);
+  return <button className={active ? 'conversation-item active' : 'conversation-item'} onClick={onClick}><Avatar user={room.is_group ? { username: room.name } : other} /><span><strong>{roomLabel(room, me.id)}</strong><small>{room.is_group ? `${room.participants?.length || 0} members` : other?.is_online ? 'Online now' : formatLastSeen(other?.last_seen_at)}</small></span></button>;
+}
+
+function MessageBubble({ message, me, read, pickerOpen, onToggle, onReact }) {
+  const reactions = Object.entries(message.reaction_users || {}).filter(([, users]) => users?.length);
+  return <article className={message.sender_id === me.id ? 'msg mine' : 'msg'} onClick={(event) => { if (!event.target.closest('button, a, audio, video')) onToggle(); }}>
+    <span className="msg-sender">{message.sender_id === me.id ? 'You' : `@${message.sender_username || 'friend'}`}</span>
+    {message.media_url && <MessageMedia message={message} />}
+    {message.text && <p>{renderText(message.text, message.id)}</p>}
+    {pickerOpen && <div className="message-reaction-picker" onClick={(event) => event.stopPropagation()}>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+    {reactions.length > 0 && <div className="reaction-summary">{reactions.map(([emoji, users]) => <span key={emoji} className={users.includes(me.id) ? 'reaction-chip mine' : 'reaction-chip'}>{renderText(emoji, `${message.id}-${emoji}`)} {users.length}</span>)}</div>}
+    <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} />}</div>
+  </article>;
 }
 
 function MessageMedia({ message }) {
@@ -455,24 +323,7 @@ function MessageMedia({ message }) {
   return <a className="message-file" href={url} target="_blank" rel="noreferrer">Open shared file</a>;
 }
 
-function MessageStatus({ read }) {
-  return (
-    <span className={read ? 'message-status read' : 'message-status'} aria-label={read ? 'Opened' : 'Sent'} title={read ? 'Opened' : 'Sent'}>
-      <i />
-      {read && <i />}
-    </span>
-  );
-}
-
-function formatDuration(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function ChatikaEmoji({ emoji }) {
-  return (
-    <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label} title={emoji.label}>
-      {emoji.glyph}
-    </span>
-  );
-}
+function MessageStatus({ read }) { return <span className={read ? 'message-status read' : 'message-status'}><i />{read && <i />}</span>; }
+function formatDuration(seconds) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
+function renderText(text, keyPrefix) { return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => { const emoji = findChatikaEmoji(part); return emoji ? <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} /> : part; }); }
+function ChatikaEmoji({ emoji }) { return <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label}>{emoji.glyph}</span>; }

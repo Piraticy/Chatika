@@ -13,6 +13,7 @@ function notifyInstallAvailable(detail = {}) {
 function notifyUpdateAvailable(registration) {
   window.__chatikaWaitingRegistration = registration;
   window.dispatchEvent(new CustomEvent('chatika:update-available'));
+  registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 }
 
 export function registerPwa() {
@@ -59,7 +60,8 @@ export function registerPwa() {
       });
     });
 
-    window.setInterval(() => registration.update().catch(() => undefined), 30 * 60 * 1000);
+    registration.update().catch(() => undefined);
+    window.setInterval(() => registration.update().catch(() => undefined), 5 * 60 * 1000);
     window.addEventListener('pagehide', () => {
       registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
     });

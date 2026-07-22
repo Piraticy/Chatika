@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, validate_refresh_session
 from app.db.session import get_db
 from app.models.entities import SessionToken, User
-from app.schemas.auth import LoginInput, LogoutInput, RefreshInput, RegisterInput, TokenPair, UserMe
+from app.schemas.auth import LoginInput, LogoutInput, ProfileUpdateInput, RefreshInput, RegisterInput, TokenPair, UserMe
 from app.services.security import create_access_token, create_refresh_token, hash_password, verify_password
 
 router = APIRouter(prefix='/auth', tags=['auth'])
@@ -88,8 +88,25 @@ def me(current_user: User = Depends(get_current_user)) -> UserMe:
         id=current_user.id,
         username=current_user.username,
         phone_number=current_user.phone_number,
+        avatar_url=current_user.avatar_url,
         is_admin=current_user.is_admin,
         is_approved=current_user.is_approved,
         is_online=current_user.is_online,
         last_seen_at=current_user.last_seen_at,
     )
+
+
+@router.patch('/profile', response_model=UserMe)
+def update_profile(
+    data: ProfileUpdateInput,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserMe:
+    if data.avatar_url and not data.avatar_url.startswith(f'/api/v1/media/files/{current_user.id}/'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Profile image must be uploaded by this account')
+
+    current_user.avatar_url = data.avatar_url
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return me(current_user)

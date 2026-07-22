@@ -12,6 +12,10 @@ import { enableWebPush } from './lib/push';
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
 
+function lastRoomKey(userId) {
+  return `chatika_last_room:${userId}`;
+}
+
 export default function App() {
   const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
@@ -47,8 +51,7 @@ export default function App() {
   const [callConnectionStatus, setCallConnectionStatus] = useState('Ready');
   const [callMuted, setCallMuted] = useState(false);
   const [callCameraOff, setCallCameraOff] = useState(false);
-  const [notificationStatus, setNotificationStatus] = useState('off');
-  const [inviteStatus, setInviteStatus] = useState(null);
+  const [notificationStatus, setNotificationStatus] = useState(localStorage.getItem('chatika_notification_status') || 'idle');
   const [mediaError, setMediaError] = useState('');
   const [messageError, setMessageError] = useState('');
   const socketRef = useRef(null);
@@ -78,6 +81,18 @@ export default function App() {
   }, [dataSaver]);
 
   useEffect(() => {
+    if (notificationStatus !== 'loading') {
+      localStorage.setItem('chatika_notification_status', notificationStatus);
+    }
+  }, [notificationStatus]);
+
+  useEffect(() => {
+    if (me?.id && activeRoomId) {
+      localStorage.setItem(lastRoomKey(me.id), activeRoomId);
+    }
+  }, [me?.id, activeRoomId]);
+
+  useEffect(() => {
     // Warm the free-tier backend early to reduce first interactive wait on mobile.
     fetch(`${API_URL}/health`).catch(() => undefined);
   }, []);
@@ -88,7 +103,12 @@ export default function App() {
 
     const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
-    if (!activeRoomId && roomData[0]) setActiveRoomId(roomData[0].id);
+    const savedRoomId = localStorage.getItem(lastRoomKey(meData.id));
+    setActiveRoomId((currentRoomId) => {
+      if (currentRoomId && roomData.some((room) => room.id === currentRoomId)) return currentRoomId;
+      if (savedRoomId && roomData.some((room) => room.id === savedRoomId)) return savedRoomId;
+      return roomData[0]?.id || '';
+    });
 
     if (meData.is_admin) {
       const pending = await api('/admin/pending-users', { token: currentToken });
@@ -230,30 +250,43 @@ export default function App() {
     }
   }
 
-  async function createRoom(name, participantIds) {
-    const room = await api('/chat/rooms', {
+  async function startDirectChat(username) {
+    const room = await api('/chat/direct', {
       method: 'POST',
       token,
-      body: { name, participant_ids: participantIds }
+      body: { username }
     });
-    setRooms((prev) => [room, ...prev]);
+    setRooms((prev) => [room, ...prev.filter((item) => item.id !== room.id)]);
     setActiveRoomId(room.id);
   }
 
-  async function inviteUser(username) {
-    if (!activeRoomId) return;
-    setInviteStatus({ text: 'Inviting…', error: false });
-    try {
-      const room = await api(`/chat/rooms/${activeRoomId}/invite`, {
-        method: 'POST',
-        token,
-        body: { username }
-      });
-      setRooms((prev) => prev.map((item) => (item.id === room.id ? room : item)));
-      setInviteStatus({ text: `@${username.replace(/^@/, '')} joined this room`, error: false });
-    } catch (error) {
-      setInviteStatus({ text: error.message, error: true });
-    }
+  async function createGroup(name, usernames) {
+    const room = await api('/chat/groups', {
+      method: 'POST',
+      token,
+      body: { name, usernames }
+    });
+    setRooms((prev) => [room, ...prev.filter((item) => item.id !== room.id)]);
+    setActiveRoomId(room.id);
+  }
+
+  async function updateProfilePhoto(file) {
+    if (!file) return;
+    const uploaded = await uploadFile(file, { token });
+    const updatedProfile = await api('/auth/profile', {
+      method: 'PATCH',
+      token,
+      body: { avatar_url: uploaded.media_url }
+    });
+    setMe(updatedProfile);
+    setRooms((prev) => prev.map((room) => ({
+      ...room,
+      participants: (room.participants || []).map((participant) => (
+        participant.id === updatedProfile.id
+          ? { ...participant, avatar_url: updatedProfile.avatar_url }
+          : participant
+      ))
+    })));
   }
 
   function sendReadReceipts(candidateMessages = messages) {
@@ -658,7 +691,11 @@ export default function App() {
       await enableWebPush(token);
       setNotificationStatus('on');
     } catch (pushError) {
-      setNotificationStatus(pushError.message || 'Notifications could not be enabled.');
+      setNotificationStatus(
+        window.Notification?.permission === 'denied'
+          ? 'denied'
+          : 'unavailable'
+      );
     }
   }
 
@@ -850,7 +887,9 @@ export default function App() {
         onSend={sendMessage}
         onSendMedia={sendMedia}
         mediaError={mediaError || messageError}
-        onCreateRoom={createRoom}
+        onStartDirect={startDirectChat}
+        onCreateGroup={createGroup}
+        onChangeProfilePhoto={updateProfilePhoto}
         statusText={statusText}
         isAdmin={me.is_admin}
         pendingUsers={pendingUsers}
@@ -874,8 +913,6 @@ export default function App() {
           if (kind && !callActive) startCall(kind);
         }}
         shareActive={shareActive}
-        onInvite={inviteUser}
-        inviteStatus={inviteStatus}
         onShareScreen={() => {
           setShareError('');
           setShareDialogOpen(true);

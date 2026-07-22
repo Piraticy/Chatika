@@ -35,7 +35,12 @@ class UserMe(BaseModel):
     id: str
     username: str
     phone_number: Optional[str]
+    avatar_url: Optional[str]
     is_admin: bool
     is_approved: bool
     is_online: bool
     last_seen_at: Optional[datetime]
+
+
+class ProfileUpdateInput(BaseModel):
+    avatar_url: Optional[str] = Field(default=None, max_length=255)

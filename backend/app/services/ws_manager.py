@@ -76,6 +76,9 @@ class WSManager:
             if not self._user_connections[user_id]:
                 self._user_connections.pop(user_id, None)
 
+    def has_connections(self, user_id: str) -> bool:
+        return bool(self._user_connections.get(user_id))
+
     async def _send_local(self, user_id: str, payload: dict[str, Any]) -> None:
         connections = tuple(self._user_connections.get(user_id, set()))
         if not connections:
