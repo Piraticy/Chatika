@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,49 @@ from app.schemas.auth import LoginInput, LogoutInput, ProfileUpdateInput, Refres
 from app.services.security import create_access_token, create_refresh_token, hash_password, verify_password
 
 router = APIRouter(prefix='/auth', tags=['auth'])
+
+COUNTRY_HEADERS = (
+    'cf-ipcountry',
+    'cloudfront-viewer-country',
+    'x-vercel-ip-country',
+    'x-country-code',
+)
+
+
+def _clean_optional(value: str | None, max_length: int) -> str | None:
+    cleaned = value.strip()[:max_length] if value else ''
+    return cleaned or None
+
+
+def _country_code(request: Request, locale: str | None) -> str | None:
+    for header in COUNTRY_HEADERS:
+        value = request.headers.get(header, '').strip().upper()
+        if len(value) == 2 and value.isalpha() and value not in {'XX', 'T1'}:
+            return value
+
+    if locale:
+        parts = locale.replace('_', '-').split('-')
+        for part in reversed(parts[1:]):
+            if len(part) == 2 and part.isalpha():
+                return part.upper()
+    return None
+
+
+def _apply_client_context(user: User, data: RegisterInput | LoginInput, request: Request, *, signup: bool) -> None:
+    device = _clean_optional(data.device_name, 120)
+    locale = _clean_optional(data.locale, 35)
+    client_timezone = _clean_optional(data.timezone, 80)
+    country = _country_code(request, locale)
+
+    user.last_device = device
+    user.last_locale = locale
+    user.last_timezone = client_timezone
+    user.last_country_code = country
+    if signup:
+        user.signup_device = device
+        user.signup_locale = locale
+        user.signup_timezone = client_timezone
+        user.signup_country_code = country
 
 
 def _token_pair(db: Session, user: User, device_name: str) -> TokenPair:
@@ -28,7 +71,7 @@ def _token_pair(db: Session, user: User, device_name: str) -> TokenPair:
 
 
 @router.post('/register', response_model=TokenPair)
-def register(data: RegisterInput, db: Session = Depends(get_db)) -> TokenPair:
+def register(data: RegisterInput, request: Request, db: Session = Depends(get_db)) -> TokenPair:
     existing_filters = [User.username == data.username]
     if data.phone_number:
         existing_filters.append(User.phone_number == data.phone_number)
@@ -44,6 +87,7 @@ def register(data: RegisterInput, db: Session = Depends(get_db)) -> TokenPair:
         is_admin=first_user,
         is_approved=True,
     )
+    _apply_client_context(user, data, request, signup=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -52,12 +96,15 @@ def register(data: RegisterInput, db: Session = Depends(get_db)) -> TokenPair:
 
 
 @router.post('/login', response_model=TokenPair)
-def login(data: LoginInput, db: Session = Depends(get_db)) -> TokenPair:
+def login(data: LoginInput, request: Request, db: Session = Depends(get_db)) -> TokenPair:
     user = db.scalar(select(User).where(User.username == data.username))
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
     if not user.is_approved:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account pending admin approval')
+    _apply_client_context(user, data, request, signup=False)
+    db.add(user)
+    db.commit()
     return _token_pair(db, user, data.device_name)
 
 

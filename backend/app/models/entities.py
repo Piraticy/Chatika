@@ -18,6 +18,14 @@ class User(Base, UUIDTimeMixin):
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    signup_country_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    last_country_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    signup_locale: Mapped[Optional[str]] = mapped_column(String(35), nullable=True)
+    last_locale: Mapped[Optional[str]] = mapped_column(String(35), nullable=True)
+    signup_timezone: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    last_timezone: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    signup_device: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    last_device: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
 
 class SessionToken(Base, UUIDTimeMixin):

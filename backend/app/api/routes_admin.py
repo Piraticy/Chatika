@@ -24,11 +24,18 @@ def list_users(_admin: User = Depends(get_current_admin), db: Session = Depends(
         {
             'id': user.id,
             'username': user.username,
+            'avatar_url': user.avatar_url,
             'is_admin': user.is_admin,
             'is_approved': user.is_approved,
             'is_online': user.is_online,
             'last_seen_at': user.last_seen_at.isoformat() if user.last_seen_at else None,
             'created_at': user.created_at.isoformat() if user.created_at else None,
+            'country_code': user.last_country_code or user.signup_country_code,
+            'signup_country_code': user.signup_country_code,
+            'locale': user.last_locale or user.signup_locale,
+            'timezone': user.last_timezone or user.signup_timezone,
+            'device': user.last_device or user.signup_device,
+            'signup_device': user.signup_device,
         }
         for user in users
     ]

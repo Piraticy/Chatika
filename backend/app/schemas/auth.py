@@ -8,6 +8,8 @@ class RegisterInput(BaseModel):
     username: str = Field(min_length=3, max_length=40)
     password: str = Field(min_length=8, max_length=120)
     device_name: str = Field(default='Unknown Device', max_length=120)
+    locale: Optional[str] = Field(default=None, max_length=35)
+    timezone: Optional[str] = Field(default=None, max_length=80)
     phone_number: Optional[str] = Field(default=None, min_length=7, max_length=20)
 
 
@@ -15,6 +17,8 @@ class LoginInput(BaseModel):
     username: str = Field(min_length=3, max_length=40)
     password: str
     device_name: str = Field(default='Unknown Device', max_length=120)
+    locale: Optional[str] = Field(default=None, max_length=35)
+    timezone: Optional[str] = Field(default=None, max_length=80)
 
 
 class RefreshInput(BaseModel):

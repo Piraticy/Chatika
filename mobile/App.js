@@ -72,7 +72,13 @@ async function api(path, { method = 'GET', token, body } = {}) {
 
 export default function App() {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ username: '', password: '', device_name: 'Mobile Device' });
+  const [form, setForm] = useState({
+    username: '',
+    password: '',
+    device_name: `${Platform.OS} · Chatika app`,
+    locale: Intl.DateTimeFormat().resolvedOptions().locale || '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  });
   const [error, setError] = useState('');
 
   const [token, setToken] = useState('');
@@ -417,7 +423,7 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.4</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.5</Text>
     </SafeAreaView>
   );
 }

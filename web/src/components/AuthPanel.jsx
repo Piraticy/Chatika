@@ -5,7 +5,9 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
   const [form, setForm] = useState({
     username: '',
     password: '',
-    device_name: 'Web Device'
+    device_name: browserDeviceName(),
+    locale: navigator.language || '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -60,4 +62,10 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
       <footer className="app-credit">{APP_CREDIT} · v{APP_VERSION}</footer>
     </section>
   );
+}
+
+function browserDeviceName() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || 'Browser';
+  const formFactor = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile web' : 'desktop web';
+  return `${platform} · ${formFactor}`;
 }
