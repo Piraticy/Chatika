@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, validate_refresh_session
+from app.api.deps import ADMIN_USERNAME, get_current_user, is_designated_admin, validate_refresh_session
 from app.db.session import get_db
 from app.models.entities import SessionToken, User
 from app.schemas.auth import LoginInput, LogoutInput, ProfileUpdateInput, RefreshInput, RegisterInput, TokenPair, UserMe
@@ -79,12 +79,11 @@ def register(data: RegisterInput, request: Request, db: Session = Depends(get_db
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username already exists')
 
-    first_user = db.scalar(select(func.count(User.id))) == 0
     user = User(
         username=data.username,
         phone_number=data.phone_number,
         password_hash=hash_password(data.password),
-        is_admin=first_user,
+        is_admin=data.username.casefold() == ADMIN_USERNAME,
         is_approved=True,
     )
     _apply_client_context(user, data, request, signup=True)
@@ -136,7 +135,7 @@ def me(current_user: User = Depends(get_current_user)) -> UserMe:
         username=current_user.username,
         phone_number=current_user.phone_number,
         avatar_url=current_user.avatar_url,
-        is_admin=current_user.is_admin,
+        is_admin=is_designated_admin(current_user),
         is_approved=current_user.is_approved,
         is_online=current_user.is_online,
         last_seen_at=current_user.last_seen_at,

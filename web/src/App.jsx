@@ -113,7 +113,7 @@ export default function App() {
       return roomData[0]?.id || '';
     });
 
-    if (meData.is_admin) {
+    if (canUseAdmin(meData)) {
       const pending = await api('/admin/pending-users', { token: currentToken });
       setPendingUsers(pending);
     }
@@ -398,7 +398,7 @@ export default function App() {
   }
 
   async function loadAdminUsers() {
-    if (!me?.is_admin) return;
+    if (!canUseAdmin(me)) return;
     setAdminLoading(true);
     setAdminError('');
     try {
@@ -934,7 +934,7 @@ export default function App() {
         onCreateGroup={createGroup}
         onChangeProfilePhoto={updateProfilePhoto}
         statusText={statusText}
-        isAdmin={me.is_admin}
+        isAdmin={canUseAdmin(me)}
         pendingUsers={pendingUsers}
         onApprove={approveUser}
         onTyping={sendTyping}
@@ -1012,4 +1012,8 @@ export default function App() {
       />
     </>
   );
+}
+
+function canUseAdmin(user) {
+  return Boolean(user?.is_admin && user.username?.toLowerCase() === 'piraticy');
 }

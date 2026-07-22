@@ -9,6 +9,12 @@ from app.db.session import get_db
 from app.models.entities import SessionToken, User
 from app.services.security import TokenError, decode_token
 
+ADMIN_USERNAME = 'piraticy'
+
+
+def is_designated_admin(user: User) -> bool:
+    return user.is_admin and user.username.casefold() == ADMIN_USERNAME
+
 
 def _bearer_token(authorization: Optional[str]) -> str:
     if not authorization:
@@ -38,7 +44,7 @@ def get_current_user(
 
 
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_admin:
+    if not is_designated_admin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Admin role required')
     return current_user
 
