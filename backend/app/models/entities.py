@@ -52,6 +52,7 @@ class Message(Base, UUIDTimeMixin):
 
     room_id: Mapped[str] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'), index=True)
     sender_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    reply_to_id: Mapped[Optional[str]] = mapped_column(ForeignKey('messages.id', ondelete='SET NULL'), index=True, nullable=True)
     message_type: Mapped[str] = mapped_column(String(20), default='text')
     is_encrypted: Mapped[bool] = mapped_column(Boolean, default=False)
     sender_key_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)

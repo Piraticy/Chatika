@@ -27,10 +27,9 @@ function roomLabel(room, userId) {
 }
 
 function Avatar({ user, size = 'default' }) {
-  const initial = (user?.username || '?').slice(0, 1).toUpperCase();
   return user?.avatar_url
     ? <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />
-    : <span className={`user-avatar ${size}`}>{initial}</span>;
+    : <span className={`user-avatar ${size}`} role="img" aria-label="Chatika avatar">{CHATIKA_EMOJIS[0].glyph}</span>;
 }
 
 export default function ChatLayout({
@@ -88,7 +87,8 @@ export default function ChatLayout({
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [reactionMessageId, setReactionMessageId] = useState(null);
+  const [actionMessageId, setActionMessageId] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [localError, setLocalError] = useState('');
@@ -157,10 +157,11 @@ export default function ChatLayout({
     event.preventDefault();
     const text = draft.trim();
     if (!text || !activeRoomId) return;
-    onSend(text);
+    onSend(text, replyingTo);
     onTyping?.(false);
     setDraft('');
     setEmojiOpen(false);
+    setReplyingTo(null);
   }
 
   function saveReadingPosition(event) {
@@ -215,7 +216,13 @@ export default function ChatLayout({
 
   function chooseReaction(messageId, emoji) {
     onReact?.(messageId, emoji);
-    setReactionMessageId(null);
+    setActionMessageId(null);
+  }
+
+  function startReply(message) {
+    setReplyingTo(message);
+    setActionMessageId(null);
+    window.setTimeout(() => composerRef.current?.querySelector('input[name="text"]')?.focus(), 0);
   }
 
   return (
@@ -279,20 +286,23 @@ export default function ChatLayout({
         </header>
         <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
           {!orderedMessages.length && <div className="empty-chat"><h3>{activeRoom ? 'Say hello' : 'Start a conversation'}</h3><p>{activeRoom ? 'Messages, calls, and media stay together here.' : 'Add a friend by their Chatika username.'}</p></div>}
-          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} pickerOpen={reactionMessageId === message.id} onToggle={() => setReactionMessageId((value) => value === message.id ? null : message.id)} onReact={chooseReaction} />)}
+          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={() => setActionMessageId((value) => value === message.id ? null : message.id)} onReply={startReply} onReact={chooseReaction} />)}
           {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
-        <form onSubmit={submitMessage} className="composer" ref={composerRef}>
-          <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji">🙂</button>
-          <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach">＋</button>
-          <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
-          <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message">{recording ? '■' : '🎙'}</button>
-          <input name="text" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
-          <button type="submit" className="send-button" disabled={!activeRoomId}>Send</button>
-          {emojiOpen && <div className="emoji-picker">{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
-        </form>
-        {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
-        {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}
+        <div className="compose-area">
+          {replyingTo && <div className="reply-preview"><span>↩ Replying to @{replyingTo.sender_id === me.id ? me.username : replyingTo.sender_username || 'friend'}</span><strong>{replyingTo.text || 'Shared media'}</strong><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">×</button></div>}
+          <form onSubmit={submitMessage} className="composer" ref={composerRef}>
+            <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji">🙂</button>
+            <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach">＋</button>
+            <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
+            <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message">{recording ? '■' : '🎙'}</button>
+            <input name="text" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
+            <button type="submit" className="send-button" disabled={!activeRoomId}>Send</button>
+            {emojiOpen && <div className="emoji-picker">{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+          </form>
+          {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
+          {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}
+        </div>
       </main>
     </div>
   );
@@ -303,13 +313,28 @@ function ConversationButton({ room, me, active, onClick }) {
   return <button className={active ? 'conversation-item active' : 'conversation-item'} onClick={onClick}><Avatar user={room.is_group ? { username: room.name } : other} /><span><strong>{roomLabel(room, me.id)}</strong><small>{room.is_group ? `${room.participants?.length || 0} members` : other?.is_online ? 'Online now' : formatLastSeen(other?.last_seen_at)}</small></span></button>;
 }
 
-function MessageBubble({ message, me, read, pickerOpen, onToggle, onReact }) {
+function MessageBubble({ message, me, read, actionOpen, onToggle, onReply, onReact }) {
   const reactions = Object.entries(message.reaction_users || {}).filter(([, users]) => users?.length);
-  return <article className={message.sender_id === me.id ? 'msg mine' : 'msg'} onClick={(event) => { if (!event.target.closest('button, a, audio, video')) onToggle(); }}>
+  const holdTimerRef = useRef(null);
+  const longPressedRef = useRef(false);
+  function clearHold() {
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+  }
+  function beginHold(event) {
+    if (event.target.closest('button, a, audio, video')) return;
+    longPressedRef.current = false;
+    holdTimerRef.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      onToggle();
+    }, 450);
+  }
+  return <article className={message.sender_id === me.id ? 'msg mine' : 'msg'} onPointerDown={beginHold} onPointerUp={clearHold} onPointerCancel={clearHold} onContextMenu={(event) => { event.preventDefault(); if (!longPressedRef.current) onToggle(); }} onClick={(event) => { if (event.target.closest('button, a, audio, video')) return; if (longPressedRef.current) { longPressedRef.current = false; return; } onToggle(); }}>
     <span className="msg-sender">{message.sender_id === me.id ? 'You' : `@${message.sender_username || 'friend'}`}</span>
+    {message.reply_to_id && <div className="reply-context"><span>↩ @{message.reply_to_sender_username || 'friend'}</span><small>{message.reply_to_text || 'Shared media'}</small></div>}
     {message.media_url && <MessageMedia message={message} />}
     {message.text && <p>{renderText(message.text, message.id)}</p>}
-    {pickerOpen && <div className="message-reaction-picker" onClick={(event) => event.stopPropagation()}>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+    {actionOpen && <div className="message-action-menu" onClick={(event) => event.stopPropagation()}><button type="button" className="reply-action" onClick={() => onReply(message)}>↩ Reply</button>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
     {reactions.length > 0 && <div className="reaction-summary">{reactions.map(([emoji, users]) => <span key={emoji} className={users.includes(me.id) ? 'reaction-chip mine' : 'reaction-chip'}>{renderText(emoji, `${message.id}-${emoji}`)} {users.length}</span>)}</div>}
     <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} />}</div>
   </article>;

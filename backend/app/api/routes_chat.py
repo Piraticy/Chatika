@@ -114,7 +114,21 @@ def _parse_reactions(message: Message) -> dict[str, list[str]]:
     return clean
 
 
-def _serialize_message(message: Message, sender_username: str | None = None) -> dict:
+def _reply_fields(db: Session, message: Message) -> dict:
+    if not message.reply_to_id:
+        return {'reply_to_id': None, 'reply_to_sender_username': None, 'reply_to_text': None}
+    replied_message = db.get(Message, message.reply_to_id)
+    if not replied_message:
+        return {'reply_to_id': message.reply_to_id, 'reply_to_sender_username': None, 'reply_to_text': None}
+    replied_sender = db.get(User, replied_message.sender_id)
+    return {
+        'reply_to_id': replied_message.id,
+        'reply_to_sender_username': replied_sender.username if replied_sender else None,
+        'reply_to_text': replied_message.text,
+    }
+
+
+def _serialize_message(db: Session, message: Message, sender_username: str | None = None) -> dict:
     return {
         'id': message.id,
         'room_id': message.room_id,
@@ -127,6 +141,7 @@ def _serialize_message(message: Message, sender_username: str | None = None) -> 
         'reaction_users': _parse_reactions(message),
         'text': message.text,
         'media_url': message.media_url,
+        **_reply_fields(db, message),
         'created_at': message.created_at.isoformat(),
     }
 
@@ -287,9 +302,17 @@ async def send_message(
     if data.text and len(data.text) > settings.message_max_length:
         raise HTTPException(status_code=400, detail='Message text exceeds max length')
 
+    reply_to_id = None
+    if data.reply_to_id:
+        replied_message = db.get(Message, data.reply_to_id)
+        if not replied_message or replied_message.room_id != data.room_id:
+            raise HTTPException(status_code=400, detail='Reply target is not in this chat')
+        reply_to_id = replied_message.id
+
     message = Message(
         room_id=data.room_id,
         sender_id=current_user.id,
+        reply_to_id=reply_to_id,
         message_type=data.message_type,
         is_encrypted=data.is_encrypted,
         sender_key_id=data.sender_key_id,
@@ -301,7 +324,7 @@ async def send_message(
     db.commit()
     db.refresh(message)
 
-    payload = {'event': 'message:new', 'data': _serialize_message(message, current_user.username)}
+    payload = {'event': 'message:new', 'data': _serialize_message(db, message, current_user.username)}
     recipient_ids = _room_member_ids(db, message.room_id)
     await ws_manager.broadcast_users(recipient_ids, payload)
 
@@ -339,6 +362,7 @@ async def send_message(
         reaction_users=_parse_reactions(message),
         text=message.text,
         media_url=message.media_url,
+        **_reply_fields(db, message),
         created_at=message.created_at,
     )
 
@@ -378,6 +402,7 @@ def list_messages(
             reaction_users=_parse_reactions(m),
             text=m.text,
             media_url=m.media_url,
+            **_reply_fields(db, m),
             created_at=m.created_at,
         )
         for m in messages
@@ -448,5 +473,6 @@ async def react_to_message(
         reaction_users=_parse_reactions(message),
         text=message.text,
         media_url=message.media_url,
+        **_reply_fields(db, message),
         created_at=message.created_at,
     )

@@ -47,6 +47,7 @@ class SendMessageInput(BaseModel):
     encrypted_body: Optional[str] = Field(default=None, max_length=12000)
     text: Optional[str] = Field(default=None, max_length=4000)
     media_url: Optional[str] = Field(default=None, max_length=255)
+    reply_to_id: Optional[str] = None
 
 
 class MessageOut(BaseModel):
@@ -61,6 +62,9 @@ class MessageOut(BaseModel):
     reaction_users: dict[str, list[str]] = Field(default_factory=dict)
     text: Optional[str]
     media_url: Optional[str]
+    reply_to_id: Optional[str] = None
+    reply_to_sender_username: Optional[str] = None
+    reply_to_text: Optional[str] = None
     created_at: datetime
 
 

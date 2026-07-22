@@ -313,7 +313,7 @@ export default function App() {
     };
   }, [messages, activeRoomId, me?.id]);
 
-  async function sendMessage(text) {
+  async function sendMessage(text, replyTo = null) {
     const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMessage = {
       id: localId,
@@ -322,6 +322,9 @@ export default function App() {
       message_type: 'text',
       is_encrypted: false,
       reaction_users: {},
+      reply_to_id: replyTo?.id || null,
+      reply_to_sender_username: replyTo?.sender_id === me.id ? me.username : replyTo?.sender_username || null,
+      reply_to_text: replyTo?.text || null,
       text,
       media_url: null,
       created_at: new Date().toISOString(),
@@ -333,7 +336,7 @@ export default function App() {
       const sent = await api('/chat/messages', {
         method: 'POST',
         token,
-        body: { room_id: activeRoomId, text, message_type: 'text' }
+        body: { room_id: activeRoomId, text, message_type: 'text', reply_to_id: replyTo?.id || null }
       });
       setMessages((prev) => prev.map((message) => (message.id === localId ? { ...sent, status: 'sent' } : message)));
     } catch (error) {
