@@ -628,3 +628,54 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
   .composer button, .composer-action, .emoji-toggle { width: 36px; }
   .composer .send-button { width: 44px; }
 }
+
+/* Refined dashboard and portrait calling experience. */
+.chat-root { transition: grid-template-columns .22s ease; }
+.menu-trigger { display: grid !important; flex: 0 0 auto; }
+.emoji-picker { grid-template-columns: repeat(6, minmax(34px, 1fr)); gap: 6px; width: min(310px, calc(100vw - 24px)); max-height: 270px; overflow-y: auto; padding: 9px; border-radius: 18px; }
+.emoji-picker-title { grid-column: 1 / -1; padding: 3px 4px 5px; color: var(--muted); font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; }
+.emoji-picker button { display: grid; width: 100%; min-height: 38px; place-items: center; padding: 0; border-radius: 10px; }
+.emoji-picker .chatika-emoji { font-size: 1.05rem; }
+.thread-actions { align-items: center; }
+.call-button, .share-button { border-color: #d4e2e8; color: #102338; box-shadow: 0 4px 14px rgba(10, 18, 33, .04); }
+.call-button:hover, .share-button:hover { border-color: #82dfe5; color: #087e88; background: #effdff; }
+
+@media (min-width: 721px) {
+  .chat-root.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  .chat-root.sidebar-collapsed .sidebar { visibility: hidden; opacity: 0; transform: translateX(-24px); pointer-events: none; }
+  .sidebar { transition: opacity .18s ease, transform .22s ease, visibility .22s ease; }
+}
+
+.call-backdrop { background: rgba(5, 16, 29, .62); backdrop-filter: blur(18px); }
+.portrait-call-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(94dvh, 760px); overflow: hidden; border: 1px solid rgba(255,255,255,.82); border-radius: 30px; padding: 16px; background: linear-gradient(160deg, #f8fcff, #edf8f5); box-shadow: 0 30px 100px rgba(2, 15, 28, .42); }
+.compact-call-header { align-items: center; padding: 2px 2px 13px; }
+.compact-call-header h2 { margin: 4px 0 0; overflow: hidden; font-size: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
+.compact-call-header .call-kicker { font-size: .56rem; letter-spacing: .14em; }
+.compact-call-header .call-status-chip { padding: 7px 9px; font-size: .58rem; }
+.portrait-call-stage { display: grid; position: relative; width: min(100%, 330px); aspect-ratio: 9 / 12; min-height: 0; margin: 0 auto; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 25px; color: white; background: radial-gradient(circle at 50% 34%, #18344e, #071321 72%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+.call-contact-card { display: grid; place-items: center; align-content: center; gap: 10px; padding: 24px; text-align: center; }
+.call-contact-card strong { font-size: 1.2rem; }
+.call-contact-card > span { color: rgba(255,255,255,.6); font-size: .72rem; }
+.call-profile-photo { display: block; width: 66px; height: 66px; border: 3px solid rgba(255,255,255,.9); border-radius: 50%; object-fit: cover; box-shadow: 0 12px 34px rgba(0,0,0,.28); }
+.call-profile-photo.large, .call-contact-card .call-avatar-large { width: 112px; height: 112px; }
+.call-contact-card .call-avatar-large { color: #082033; background: linear-gradient(145deg, #6dffb0, #14d2e2); font-size: 2.2rem; box-shadow: 0 0 0 12px rgba(20,210,226,.1); }
+.portrait-remote-video { position: absolute; inset: 0; }
+.portrait-remote-video .call-video { width: 100%; height: 100%; min-height: 0; object-fit: cover; }
+.portrait-remote-video > span { right: auto; bottom: 14px; left: 14px; }
+.portrait-call-stage .local-call-video { right: 12px; bottom: 12px; width: 92px; height: 126px; min-height: 0; border-radius: 18px; object-fit: cover; }
+.compact-call-controls { gap: 12px; margin-top: 14px; }
+.compact-call-controls .call-control { display: grid; width: 64px; height: 64px; min-width: 64px; place-items: center; gap: 2px; padding: 7px; border-radius: 22px; }
+.compact-call-controls .call-control svg { width: 21px; height: 21px; }
+.compact-call-controls .call-control > span { font-size: .55rem; }
+.compact-call-controls .end-control { border-color: #d95d4c; background: #d95d4c; }
+.compact-call-controls .accept-control { border-color: #16a66b; background: #16a66b; }
+
+@media (max-width: 720px) {
+  .emoji-picker { left: 0; grid-template-columns: repeat(5, minmax(34px, 1fr)); width: min(286px, calc(100vw - 20px)); max-height: min(250px, 38dvh); }
+  .portrait-call-dialog { width: min(100%, 390px); max-height: calc(var(--app-height, 100dvh) - 16px); border-radius: 28px; padding: 12px; }
+  .portrait-call-stage { width: min(100%, 310px); max-height: calc(var(--app-height, 100dvh) - 174px); }
+  .compact-call-header { padding-bottom: 10px; }
+  .compact-call-header h2 { font-size: 1.05rem; }
+  .compact-call-controls { margin-top: 10px; }
+  .compact-call-controls .call-control { width: 58px; height: 58px; min-width: 58px; border-radius: 20px; }
+}

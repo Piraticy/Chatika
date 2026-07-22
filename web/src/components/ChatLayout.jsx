@@ -86,7 +86,10 @@ export default function ChatLayout({
   const recorderStreamRef = useRef(null);
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.matchMedia('(max-width: 720px)').matches) return false;
+    return localStorage.getItem('chatika_sidebar_visible') !== 'false';
+  });
   const [actionMessageId, setActionMessageId] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [recording, setRecording] = useState(false);
@@ -117,9 +120,15 @@ export default function ChatLayout({
     recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 720px)').matches) {
+      localStorage.setItem('chatika_sidebar_visible', String(sidebarOpen));
+    }
+  }, [sidebarOpen]);
+
   function selectConversation(roomId) {
     onSelectRoom(roomId);
-    setSidebarOpen(false);
+    if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
   }
 
   async function submitDirect(event) {
@@ -226,7 +235,7 @@ export default function ChatLayout({
   }
 
   return (
-    <div className="chat-root">
+    <div className={sidebarOpen ? 'chat-root' : 'chat-root sidebar-collapsed'}>
       <button className="mobile-menu-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
       <aside className={sidebarOpen ? 'sidebar glass open' : 'sidebar glass'}>
         <div className="sidebar-head">
@@ -274,7 +283,7 @@ export default function ChatLayout({
       <main className="thread glass">
         <header className="thread-head">
           <div className="thread-title-wrap">
-            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open conversations"><UiIcon name="menu" /></button>
+            <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen((value) => !value)} aria-label={sidebarOpen ? 'Hide conversations' : 'Show conversations'} title={sidebarOpen ? 'Hide conversations' : 'Show conversations'}><UiIcon name="menu" /></button>
             {activeContact && <Avatar user={activeContact} size="thread" />}
             <div><span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP' : 'PRIVATE CHAT') : 'CHATIKA'}</span><h2>{activeRoom ? roomLabel(activeRoom, me.id) : 'Your conversations'}</h2><small>{activePresenceText}</small></div>
           </div>
@@ -298,7 +307,7 @@ export default function ChatLayout({
             <button type="button" className={recording ? 'composer-action recording' : 'composer-action'} onClick={toggleRecording} disabled={!activeRoomId} aria-label="Voice message"><UiIcon name={recording ? 'stop' : 'mic'} /></button>
             <input name="text" enterKeyHint="send" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
             <button type="submit" className="send-button" disabled={!activeRoomId}><span>Send</span><UiIcon name="send" /></button>
-            {emojiOpen && <div className="emoji-picker">{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+            {emojiOpen && <div className="emoji-picker"><strong className="emoji-picker-title">Chatika expressions</strong>{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${findChatikaEmoji(emoji)?.label || emoji}`}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
           </form>
           {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
           {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}

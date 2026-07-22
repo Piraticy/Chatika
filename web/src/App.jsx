@@ -846,6 +846,14 @@ export default function App() {
     () => Object.fromEntries((activeRoom?.participants || []).map((participant) => [participant.id, participant.username])),
     [activeRoom]
   );
+  const callParticipantProfiles = useMemo(
+    () => Object.fromEntries((activeRoom?.participants || []).map((participant) => [participant.id, participant])),
+    [activeRoom]
+  );
+  const callTargetProfile = useMemo(
+    () => (activeRoom?.participants || []).find((participant) => participant.id !== me?.id) || null,
+    [activeRoom, me?.id]
+  );
   const callTargetLabel = useMemo(() => {
     const others = (activeRoom?.participants || []).filter((participant) => participant.id !== me?.id);
     if (!others.length) return 'room participants';
@@ -944,7 +952,9 @@ export default function App() {
         error={callError}
         connectionStatus={callConnectionStatus}
         targetLabel={callTargetLabel}
+        targetProfile={callTargetProfile}
         participantNames={callParticipantNames}
+        participantProfiles={callParticipantProfiles}
         muted={callMuted}
         cameraOff={callCameraOff}
         onStart={startCall}
