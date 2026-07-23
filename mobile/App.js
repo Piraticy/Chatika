@@ -182,7 +182,7 @@ export default function App() {
     setMessages([]);
   }
 
-  async function tryRefresh() {
+  async function refreshTokenPair() {
     if (!refreshToken) return false;
     if (refreshPromiseRef.current) return refreshPromiseRef.current;
     refreshPromiseRef.current = (async () => {
@@ -193,8 +193,7 @@ export default function App() {
         });
         setToken(pair.access_token);
         setRefreshToken(pair.refresh_token);
-        await hydrate(pair.access_token);
-        return true;
+        return pair.access_token;
       } catch (refreshError) {
         if (refreshError.status === 401 || refreshError.status === 403) {
           setToken('');
@@ -208,6 +207,30 @@ export default function App() {
       }
     })();
     return refreshPromiseRef.current;
+  }
+
+  async function tryRefresh() {
+    const newToken = await refreshTokenPair();
+    if (!newToken) return false;
+    await hydrate(newToken);
+    return true;
+  }
+
+  // Access tokens expire after 30 minutes. Without this, any request made mid-session
+  // after that would surface the raw "Invalid token" 401 straight to the user - this
+  // transparently refreshes once and retries, without resetting the active room the
+  // way a full tryRefresh()+hydrate() would.
+  async function authedApi(path, opts = {}) {
+    const requestToken = opts.token ?? token;
+    try {
+      return await api(path, { ...opts, token: requestToken });
+    } catch (requestError) {
+      if (requestError.status === 401 || requestError.status === 403) {
+        const newToken = await refreshTokenPair();
+        if (newToken) return api(path, { ...opts, token: newToken });
+      }
+      throw requestError;
+    }
   }
 
   useEffect(() => {
@@ -275,7 +298,7 @@ export default function App() {
 
     const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
     const pushToken = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    await api('/push/register-token', {
+    await authedApi('/push/register-token', {
       method: 'POST',
       token: currentToken,
       body: {
@@ -289,7 +312,7 @@ export default function App() {
   useEffect(() => {
     if (!token || !activeRoomId) return;
 
-    api(`/chat/rooms/${activeRoomId}/messages`, { token }).then(setMessages).catch(() => setMessages([]));
+    authedApi(`/chat/rooms/${activeRoomId}/messages`, { token }).then(setMessages).catch(() => setMessages([]));
 
     const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://').replace('/api/v1', '/api/v1/realtime/ws');
     const socket = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`);
@@ -342,7 +365,7 @@ export default function App() {
     const username = String(selectedUsername || contactUsername).trim();
     if (!username) return;
     try {
-      const room = await api('/chat/direct', {
+      const room = await authedApi('/chat/direct', {
         method: 'POST',
         token,
         body: { username }
@@ -362,7 +385,7 @@ export default function App() {
     setError('');
     try {
       const params = new URLSearchParams({ q: contactUsername.trim(), scope });
-      setDiscoverUsers(await api(`/chat/discover?${params.toString()}`, { token }));
+      setDiscoverUsers(await authedApi(`/chat/discover?${params.toString()}`, { token }));
     } catch (discoverError) {
       setError(discoverError.message);
     } finally {
@@ -374,7 +397,7 @@ export default function App() {
     const usernames = groupUsers.split(',').map((value) => value.trim()).filter(Boolean);
     if (!groupName.trim() || !usernames.length) return;
     try {
-      const room = await api('/chat/groups', {
+      const room = await authedApi('/chat/groups', {
         method: 'POST',
         token,
         body: { name: groupName.trim(), usernames }
@@ -393,7 +416,7 @@ export default function App() {
     const text = draft.trim();
     if (!text || !activeRoomId) return;
 
-    await api('/chat/messages', {
+    await authedApi('/chat/messages', {
       method: 'POST',
       token,
       body: { room_id: activeRoomId, text, message_type: 'text' }
@@ -420,7 +443,7 @@ export default function App() {
     setFeedbackSubmitting(true);
     setFeedbackError('');
     try {
-      await api('/feedback/beta', {
+      await authedApi('/feedback/beta', {
         method: 'POST',
         token,
         body: {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chatika-shell-v12';
+const CACHE_NAME = 'chatika-shell-v13';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -75,10 +75,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)) {
-    event.respondWith(fetch(request, { cache: 'no-store' }).then((response) => {
+    // Vite content-hashes these filenames, so cache-first is safe: a new deploy
+    // ships new hashed URLs (referenced by the no-store '/' navigation above),
+    // it never needs to invalidate an old cached asset under the same URL.
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
       return response;
-    }).catch(() => caches.match(request)));
+    })));
   }
 });

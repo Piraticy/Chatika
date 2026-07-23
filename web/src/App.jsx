@@ -127,7 +127,7 @@ export default function App() {
     }
   }
 
-  async function tryRefresh() {
+  async function refreshTokenPair() {
     if (!refreshToken) return false;
     if (refreshPromiseRef.current) return refreshPromiseRef.current;
     refreshPromiseRef.current = (async () => {
@@ -138,8 +138,7 @@ export default function App() {
         });
         setToken(pair.access_token);
         setRefreshToken(pair.refresh_token);
-        await hydrateSession(pair.access_token);
-        return true;
+        return pair.access_token;
       } catch (refreshError) {
         if (refreshError.status === 401 || refreshError.status === 403) {
           setToken('');
@@ -153,6 +152,44 @@ export default function App() {
       }
     })();
     return refreshPromiseRef.current;
+  }
+
+  async function tryRefresh() {
+    const newToken = await refreshTokenPair();
+    if (!newToken) return false;
+    await hydrateSession(newToken);
+    return true;
+  }
+
+  // Access tokens expire after 30 minutes (see backend settings.access_token_minutes).
+  // Any request made mid-session after that would otherwise surface the raw
+  // "Invalid token" 401 straight to the user - this transparently refreshes
+  // once and retries, without resetting the active room/messages the way a
+  // full tryRefresh()+hydrateSession() would.
+  async function authedApi(path, opts = {}) {
+    const requestToken = opts.token ?? token;
+    try {
+      return await api(path, { ...opts, token: requestToken });
+    } catch (requestError) {
+      if (requestError.status === 401 || requestError.status === 403) {
+        const newToken = await refreshTokenPair();
+        if (newToken) return api(path, { ...opts, token: newToken });
+      }
+      throw requestError;
+    }
+  }
+
+  async function authedUpload(file, opts = {}) {
+    const requestToken = opts.token ?? token;
+    try {
+      return await uploadFile(file, { ...opts, token: requestToken });
+    } catch (requestError) {
+      if (requestError.status === 401 || requestError.status === 403) {
+        const newToken = await refreshTokenPair();
+        if (newToken) return uploadFile(file, { ...opts, token: newToken });
+      }
+      throw requestError;
+    }
   }
 
   useEffect(() => {
@@ -297,7 +334,7 @@ export default function App() {
 
   useEffect(() => {
     if (!token || !activeRoomId) return;
-    api(`/chat/rooms/${activeRoomId}/messages?limit=${dataSaver ? 40 : 80}`, { token })
+    authedApi(`/chat/rooms/${activeRoomId}/messages?limit=${dataSaver ? 40 : 80}`, { token })
       .then(setMessages)
       .catch(() => setMessages([]));
   }, [activeRoomId, token, dataSaver]);
@@ -319,7 +356,7 @@ export default function App() {
   }
 
   async function startDirectChat(username) {
-    const room = await api('/chat/direct', {
+    const room = await authedApi('/chat/direct', {
       method: 'POST',
       token,
       body: { username }
@@ -331,11 +368,11 @@ export default function App() {
 
   async function discoverFriends(query, scope) {
     const params = new URLSearchParams({ q: query || '', scope: scope || 'online' });
-    return api(`/chat/discover?${params.toString()}`, { token });
+    return authedApi(`/chat/discover?${params.toString()}`, { token });
   }
 
   async function createGroup(name, usernames) {
-    const room = await api('/chat/groups', {
+    const room = await authedApi('/chat/groups', {
       method: 'POST',
       token,
       body: { name, usernames }
@@ -346,8 +383,8 @@ export default function App() {
 
   async function updateProfilePhoto(file) {
     if (!file) return;
-    const uploaded = await uploadFile(file, { token });
-    const updatedProfile = await api('/auth/profile', {
+    const uploaded = await authedUpload(file, { token });
+    const updatedProfile = await authedApi('/auth/profile', {
       method: 'PATCH',
       token,
       body: { avatar_url: uploaded.media_url }
@@ -407,7 +444,7 @@ export default function App() {
     setMessageError('');
     setMessages((prev) => [optimisticMessage, ...prev]);
     try {
-      const sent = await api('/chat/messages', {
+      const sent = await authedApi('/chat/messages', {
         method: 'POST',
         token,
         body: { room_id: activeRoomId, text, message_type: 'text', reply_to_id: replyTo?.id || null }
@@ -423,9 +460,9 @@ export default function App() {
     if (!activeRoomId || !file) return;
     setMediaError('');
     try {
-      const uploaded = await uploadFile(file, { token });
+      const uploaded = await authedUpload(file, { token });
       const messageType = requestedType || (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file');
-      const sent = await api('/chat/messages', {
+      const sent = await authedApi('/chat/messages', {
         method: 'POST',
         token,
         body: {
@@ -458,12 +495,12 @@ export default function App() {
   }
 
   async function approveUser(userId) {
-    await api('/admin/approve-user', {
+    await authedApi('/admin/approve-user', {
       method: 'POST',
       token,
       body: { user_id: userId }
     });
-    const pending = await api('/admin/pending-users', { token });
+    const pending = await authedApi('/admin/pending-users', { token });
     setPendingUsers(pending);
     await loadAdminUsers();
   }
@@ -474,8 +511,8 @@ export default function App() {
     setAdminError('');
     try {
       const [users, feedback] = await Promise.all([
-        api('/admin/users', { token }),
-        api('/admin/feedback', { token })
+        authedApi('/admin/users', { token }),
+        authedApi('/admin/feedback', { token })
       ]);
       setAdminUsers(users);
       setAdminFeedback(feedback);
@@ -490,7 +527,7 @@ export default function App() {
     setFeedbackSubmitting(true);
     setFeedbackError('');
     try {
-      await api('/feedback/beta', {
+      await authedApi('/feedback/beta', {
         method: 'POST',
         token,
         body: { ...payload, app_version: APP_VERSION, platform: 'web' }
@@ -506,7 +543,7 @@ export default function App() {
   async function removeUser(userId, username) {
     if (!window.confirm(`Remove @${username} from Chatika?`)) return;
     try {
-      await api('/admin/remove-user', { method: 'POST', token, body: { user_id: userId } });
+      await authedApi('/admin/remove-user', { method: 'POST', token, body: { user_id: userId } });
       await loadAdminUsers();
     } catch (error) {
       setAdminError(error.message);
@@ -540,7 +577,7 @@ export default function App() {
 
   async function reactToMessage(messageId, emoji) {
     if (!activeRoomId) return;
-    const updated = await api(`/chat/messages/${messageId}/react`, {
+    const updated = await authedApi(`/chat/messages/${messageId}/react`, {
       method: 'POST',
       token,
       body: { room_id: activeRoomId, emoji }
@@ -551,7 +588,7 @@ export default function App() {
   async function getIceServers() {
     if (iceServersRef.current.length) return iceServersRef.current;
     try {
-      const config = await api('/realtime/ice-config', { token });
+      const config = await authedApi('/realtime/ice-config', { token });
       iceTransportPolicyRef.current = config.force_turn ? 'relay' : 'all';
       iceServersRef.current = config.ice_servers?.length
         ? config.ice_servers
