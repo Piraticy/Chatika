@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
 
-export default function AdminPanel({ open, users = [], feedback = [], loading, error, onClose, onRefresh, onApprove, onRemove }) {
+export default function AdminPanel({ open, users = [], feedback = [], passwordResetRequests = [], loading, error, onClose, onRefresh, onApprove, onRemove, onResetPassword }) {
   const [query, setQuery] = useState('');
+  const [resetInputs, setResetInputs] = useState({});
+  const [resettingId, setResettingId] = useState('');
+  const [resetFeedback, setResetFeedback] = useState({});
 
   const analytics = useMemo(() => buildAnalytics(users), [users]);
   const feedbackAnalytics = useMemo(() => buildFeedbackAnalytics(feedback), [feedback]);
@@ -18,6 +21,21 @@ export default function AdminPanel({ open, users = [], feedback = [], loading, e
   }, [query, users]);
 
   if (!open) return null;
+
+  async function submitReset(userId) {
+    const newPassword = (resetInputs[userId] || '').trim();
+    if (newPassword.length < 8 || resettingId) return;
+    setResettingId(userId);
+    setResetFeedback((prev) => ({ ...prev, [userId]: '' }));
+    try {
+      await onResetPassword(userId, newPassword);
+      setResetInputs((prev) => ({ ...prev, [userId]: '' }));
+    } catch (submitError) {
+      setResetFeedback((prev) => ({ ...prev, [userId]: submitError.message || 'Could not reset the password.' }));
+    } finally {
+      setResettingId('');
+    }
+  }
 
   return (
     <div className="modal-backdrop admin-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -79,6 +97,40 @@ export default function AdminPanel({ open, users = [], feedback = [], loading, e
             {!feedback.length && <small>No beta responses yet.</small>}
           </div>
         </section>
+
+        {Boolean(passwordResetRequests.length) && (
+          <section className="admin-feedback-card password-reset-card">
+            <div className="admin-insight-title"><strong>Password reset requests</strong><span>{passwordResetRequests.length} pending</span></div>
+            <div className="password-reset-list">
+              {passwordResetRequests.map((request) => (
+                <article key={request.id} className="password-reset-row">
+                  <div className="user-details">
+                    <strong>@{request.username}</strong>
+                    <small>Requested {request.requested_at ? formatDate(request.requested_at) : 'recently'}{request.phone_number ? ` · ${request.phone_number}` : ''}</small>
+                  </div>
+                  <div className="password-reset-form">
+                    <input
+                      type="text"
+                      placeholder="New password (8+ characters)"
+                      minLength={8}
+                      value={resetInputs[request.id] || ''}
+                      onChange={(event) => setResetInputs((prev) => ({ ...prev, [request.id]: event.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="user-action approve"
+                      disabled={(resetInputs[request.id] || '').trim().length < 8 || resettingId === request.id}
+                      onClick={() => submitReset(request.id)}
+                    >
+                      {resettingId === request.id ? 'Setting…' : 'Set password'}
+                    </button>
+                  </div>
+                  {resetFeedback[request.id] && <small className="password-reset-error">{resetFeedback[request.id]}</small>}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="admin-toolbar">
           <label className="admin-search">

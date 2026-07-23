@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
 
-export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
+export default function AuthPanel({ mode, onModeChange, onSubmit, onForgotPassword, loading }) {
   const [form, setForm] = useState({
     username: '',
     password: '',
@@ -10,6 +10,8 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [resetStatus, setResetStatus] = useState('');
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -18,6 +20,20 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
   function handleSubmit(e) {
     e.preventDefault();
     onSubmit(form);
+  }
+
+  async function handleForgotPassword() {
+    if (!form.username.trim() || resetSubmitting) return;
+    setResetSubmitting(true);
+    setResetStatus('');
+    try {
+      const message = await onForgotPassword(form.username.trim());
+      setResetStatus(message || 'Request sent.');
+    } catch (_error) {
+      setResetStatus('Could not send the request right now. Please try again.');
+    } finally {
+      setResetSubmitting(false);
+    }
   }
 
   return (
@@ -58,6 +74,14 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
           {!loading && <span aria-hidden="true">→</span>}
         </button>
       </form>
+      {mode === 'login' && (
+        <div className="forgot-password-row">
+          <button type="button" className="forgot-password-link" onClick={handleForgotPassword} disabled={resetSubmitting || !form.username.trim()}>
+            {resetSubmitting ? 'Sending…' : 'Forgot password?'}
+          </button>
+          {resetStatus && <small className="forgot-password-status">{resetStatus}</small>}
+        </div>
+      )}
       <div className="auth-footer"><span className="status-dot" /> No tracking. No noisy notifications. Just your conversations.</div>
       <footer className="app-credit">{APP_CREDIT} · {APP_VERSION}</footer>
     </section>

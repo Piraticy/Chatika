@@ -21,6 +21,10 @@ class LoginInput(BaseModel):
     timezone: Optional[str] = Field(default=None, max_length=80)
 
 
+class ForgotPasswordInput(BaseModel):
+    username: str = Field(min_length=3, max_length=40)
+
+
 class RefreshInput(BaseModel):
     refresh_token: str
 

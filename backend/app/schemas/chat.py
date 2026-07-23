@@ -46,6 +46,10 @@ class RoomOut(BaseModel):
     created_by: Optional[str]
     participant_ids: list[str] = Field(default_factory=list)
     participants: list[RoomParticipantOut] = Field(default_factory=list)
+    last_message_text: Optional[str] = None
+    last_message_type: Optional[str] = None
+    last_message_at: Optional[datetime] = None
+    last_message_sender_id: Optional[str] = None
 
 
 class SendMessageInput(BaseModel):

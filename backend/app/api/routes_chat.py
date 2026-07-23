@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
@@ -40,6 +41,12 @@ def _room_participants(db: Session, room_id: str) -> list[RoomParticipantOut]:
     ]
 
 
+def _room_last_message(db: Session, room_id: str) -> Message | None:
+    return db.scalar(
+        select(Message).where(Message.room_id == room_id).order_by(Message.created_at.desc()).limit(1)
+    )
+
+
 def _room_out(db: Session, room: ChatRoom, viewer_id: str | None = None) -> RoomOut:
     participants = _room_participants(db, room.id)
     name = room.name
@@ -47,6 +54,7 @@ def _room_out(db: Session, room: ChatRoom, viewer_id: str | None = None) -> Room
         other_user = next((participant for participant in participants if participant.id != viewer_id), None)
         if other_user:
             name = other_user.username
+    last_message = _room_last_message(db, room.id)
     return RoomOut(
         id=room.id,
         name=name,
@@ -54,6 +62,10 @@ def _room_out(db: Session, room: ChatRoom, viewer_id: str | None = None) -> Room
         created_by=room.created_by,
         participant_ids=[participant.id for participant in participants],
         participants=participants,
+        last_message_text=last_message.text if last_message else None,
+        last_message_type=last_message.message_type if last_message else None,
+        last_message_at=last_message.created_at if last_message else None,
+        last_message_sender_id=last_message.sender_id if last_message else None,
     )
 
 
@@ -324,7 +336,11 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     if not room_ids:
         return []
     rooms = db.scalars(select(ChatRoom).where(ChatRoom.id.in_(room_ids))).all()
-    return [_room_out(db, room, current_user.id) for room in rooms]
+    room_outs = [_room_out(db, room, current_user.id) for room in rooms]
+    # Most recently active conversation first, like every other chat app - rooms
+    # with no messages yet (last_message_at is None) sort to the bottom.
+    room_outs.sort(key=lambda room: room.last_message_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return room_outs
 
 
 @router.post('/messages', response_model=MessageOut)

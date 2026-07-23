@@ -32,9 +32,8 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
    - `BACKUP_ENCRYPTION_KEY` = long random secret
    - `REDIS_URL` = your redis URL (optional but recommended)
    - `FORCE_TURN` = `false` initially
-   - `ICE_SERVERS` = JSON array (see below)
-   - `PUSH_PROVIDER` = `multi` after generating VAPID keys (Web Push + Expo Android/iOS)
-   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` = your Web Push credentials
+   - `ICE_SERVERS` = JSON array (see below) - a free/shared TURN fallback (Open Relay) ships as the default if unset
+   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` = your Web Push credentials (provider is auto-detected once these are set - see section 7)
 5. Deploy the blueprint. Open the service root URL for the UI; the API remains available under `/api/v1`.
 
 The service health check is available at `/api/v1/health`. The root URL serves the Chatika UI from the same service. When changing web code, run `npm run build:render` from `web/` before deploying.
@@ -94,18 +93,20 @@ npm run start
   ```bash
   npx web-push generate-vapid-keys --json
   ```
-- Set `PUSH_PROVIDER=multi`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL=mailto:admin@your-domain.com`.
+- Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL=admin@your-domain.com` (a bare address is fine - the `mailto:` scheme is added automatically if missing).
+- The provider is auto-detected per device token - no `PUSH_PROVIDER` setting is needed for normal Web Push (browsers/PWA) or Expo (mobile) delivery; both work as soon as the VAPID keys above are set and a push token exists for the recipient.
 - In Chatika, each signed-in device selects **Enable notifications** once. The browser subscription is then stored securely and used for messages, calls, and screen-share alerts.
 - Installed iOS/iPadOS PWAs support Web Push on current versions; Android and desktop Chromium browsers are supported when notifications are allowed.
-- The existing provider-agnostic bridge remains available:
+- `PUSH_PROVIDER` is only consulted for the explicit provider-agnostic webhook bridge, which takes priority over auto-detection when set:
   - `PUSH_PROVIDER=webhook`
   - `PUSH_WEBHOOK_URL=https://<your-push-worker>/send`
 
-## 8) Optional TURN for better call quality
-1. Deploy coturn on VM.
-2. Open UDP/TCP 3478.
-3. Add TURN entry in `ICE_SERVERS`.
-4. Set `FORCE_TURN=true` once verified.
+## 8) TURN for reliable calls
+- A free/shared TURN fallback (Open Relay Project) ships as part of the default `ICE_SERVERS`, so calls should work out of the box even across restrictive/carrier-grade NATs. It's a shared community service with no uptime guarantee - fine for beta, not for production scale.
+- For production-grade reliability, either:
+  1. Deploy coturn on a VM (e.g. Oracle Always Free), open UDP/TCP 3478, and set `ICE_SERVERS` to your own TURN entry plus `FORCE_TURN=true` once verified, or
+  2. Use a managed TURN provider (e.g. Cloudflare Realtime TURN, Twilio NTS) and set `ICE_SERVERS` to their provided entries.
+- Setting `ICE_SERVERS` explicitly overrides the built-in default entirely - include your own STUN entry too if you still want one.
 
 ## 9) Free-tier caveats
 - Render free web services sleep when idle (cold start).

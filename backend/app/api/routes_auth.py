@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ADMIN_USERNAME, get_current_user, is_designated_admin, validate_refresh_session
 from app.db.session import get_db
 from app.models.entities import BetaFeedback, SessionToken, User
-from app.schemas.auth import LoginInput, LogoutInput, ProfileUpdateInput, RefreshInput, RegisterInput, TokenPair, UserMe
+from app.schemas.auth import ForgotPasswordInput, LoginInput, LogoutInput, ProfileUpdateInput, RefreshInput, RegisterInput, TokenPair, UserMe
 from app.services.security import create_access_token, create_refresh_token, hash_password, verify_password
 
 router = APIRouter(prefix='/auth', tags=['auth'])
@@ -106,6 +106,18 @@ def login(data: LoginInput, request: Request, db: Session = Depends(get_db)) -> 
     db.add(user)
     db.commit()
     return _token_pair(db, user, data.device_name)
+
+
+@router.post('/forgot-password')
+def forgot_password(data: ForgotPasswordInput, db: Session = Depends(get_db)) -> dict:
+    user = db.scalar(select(User).where(User.username == data.username))
+    if user:
+        user.password_reset_requested_at = datetime.now(timezone.utc)
+        db.add(user)
+        db.commit()
+    # Same response whether or not the username exists, so this can't be used to
+    # probe which usernames are registered.
+    return {'message': 'If that account exists, an admin has been notified and will help reset the password.'}
 
 
 @router.post('/refresh', response_model=TokenPair)

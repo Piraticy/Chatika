@@ -43,10 +43,12 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [readByMessage, setReadByMessage] = useState({});
   const [deliveredByMessage, setDeliveredByMessage] = useState({});
+  const [unreadCounts, setUnreadCounts] = useState({});
   const [pendingUsers, setPendingUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminFeedback, setAdminFeedback] = useState([]);
+  const [adminPasswordResetRequests, setAdminPasswordResetRequests] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [typingByRoom, setTypingByRoom] = useState({});
@@ -270,6 +272,10 @@ export default function App() {
           if (evt.data.room_id === activeRoomId && evt.data.sender_id !== me.id) {
             setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
           }
+          updateRoomPreview(evt.data);
+          if (evt.data.sender_id !== me.id && evt.data.room_id !== activeRoomId) {
+            setUnreadCounts((prev) => ({ ...prev, [evt.data.room_id]: (prev[evt.data.room_id] || 0) + 1 }));
+          }
         } else if (evt.event === 'message:delivered' && evt.data.recipient_id !== me.id) {
           setDeliveredByMessage((prev) => {
             const next = { ...prev };
@@ -390,6 +396,11 @@ export default function App() {
     }
   }
 
+  async function forgotPassword(username) {
+    const data = await api('/auth/forgot-password', { method: 'POST', body: { username } });
+    return data.message;
+  }
+
   async function startDirectChat(username) {
     const room = await authedApi('/chat/direct', {
       method: 'POST',
@@ -433,6 +444,19 @@ export default function App() {
           : participant
       ))
     })));
+  }
+
+  // Keeps the sidebar's last-message preview and ordering in sync as messages
+  // arrive, without waiting for a full /chat/rooms refetch.
+  function updateRoomPreview(message) {
+    setRooms((prev) => {
+      const next = prev.map((room) => (
+        room.id === message.room_id
+          ? { ...room, last_message_text: message.text, last_message_type: message.message_type, last_message_at: message.created_at, last_message_sender_id: message.sender_id }
+          : room
+      ));
+      return next.sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
+    });
   }
 
   // "Delivered" = this device received the message (realtime push or a later
@@ -495,6 +519,7 @@ export default function App() {
         body: { room_id: activeRoomId, text, message_type: 'text', reply_to_id: replyTo?.id || null }
       });
       setMessages((prev) => prev.map((message) => (message.id === localId ? { ...sent, status: 'sent' } : message)));
+      updateRoomPreview(sent);
     } catch (error) {
       setMessages((prev) => prev.filter((message) => message.id !== localId));
       setMessageError(error.message || 'Message could not be sent.');
@@ -518,6 +543,7 @@ export default function App() {
         }
       });
       setMessages((prev) => [sent, ...prev.filter((message) => message.id !== sent.id)]);
+      updateRoomPreview(sent);
     } catch (error) {
       setMediaError(error.message || 'Unable to send this media.');
     }
@@ -555,17 +581,28 @@ export default function App() {
     setAdminLoading(true);
     setAdminError('');
     try {
-      const [users, feedback] = await Promise.all([
+      const [users, feedback, resetRequests] = await Promise.all([
         authedApi('/admin/users', { token }),
-        authedApi('/admin/feedback', { token })
+        authedApi('/admin/feedback', { token }),
+        authedApi('/admin/password-reset-requests', { token })
       ]);
       setAdminUsers(users);
       setAdminFeedback(feedback);
+      setAdminPasswordResetRequests(resetRequests);
     } catch (error) {
       setAdminError(error.message);
     } finally {
       setAdminLoading(false);
     }
+  }
+
+  async function resetUserPassword(userId, newPassword) {
+    await authedApi('/admin/reset-password', {
+      method: 'POST',
+      token,
+      body: { user_id: userId, new_password: newPassword }
+    });
+    setAdminPasswordResetRequests((prev) => prev.filter((request) => request.id !== userId));
   }
 
   async function submitBetaFeedback(payload) {
@@ -611,6 +648,7 @@ export default function App() {
       setMessages([]);
       setReadByMessage({});
       setDeliveredByMessage({});
+      setUnreadCounts({});
       setPendingUsers([]);
       setAdminUsers([]);
       setAdminFeedback([]);
@@ -912,6 +950,7 @@ export default function App() {
         }
       });
       if (roomId === activeRoomId) setMessages((prev) => [sent, ...prev]);
+      updateRoomPreview(sent);
     } catch (_error) {
       // best-effort - a missing call record shouldn't block hanging up
     }
@@ -1204,7 +1243,7 @@ export default function App() {
           </div>
           <div className="showcase-stats"><span><strong>01</strong><small>private by default</small></span><span><strong>24/7</strong><small>across your devices</small></span></div>
         </div>
-        <AuthPanel mode={mode} onModeChange={setMode} onSubmit={handleAuth} loading={loading} />
+        <AuthPanel mode={mode} onModeChange={setMode} onSubmit={handleAuth} onForgotPassword={forgotPassword} loading={loading} />
         {error && <p className="error-pill">{error}</p>}
       </div>
     );
@@ -1221,7 +1260,11 @@ export default function App() {
         messages={messages}
         readByMessage={readByMessage}
         deliveredByMessage={deliveredByMessage}
-        onSelectRoom={setActiveRoomId}
+        unreadCounts={unreadCounts}
+        onSelectRoom={(roomId) => {
+          setActiveRoomId(roomId);
+          setUnreadCounts((prev) => (prev[roomId] ? { ...prev, [roomId]: 0 } : prev));
+        }}
         onSend={sendMessage}
         onSendMedia={sendMedia}
         mediaError={mediaError || messageError}
@@ -1309,12 +1352,14 @@ export default function App() {
         open={adminOpen}
         users={adminUsers}
         feedback={adminFeedback}
+        passwordResetRequests={adminPasswordResetRequests}
         loading={adminLoading}
         error={adminError}
         onClose={() => setAdminOpen(false)}
         onRefresh={loadAdminUsers}
         onApprove={approveUser}
         onRemove={removeUser}
+        onResetPassword={resetUserPassword}
       />
       <BetaFeedbackModal
         open={Boolean(me?.needs_beta_feedback)}

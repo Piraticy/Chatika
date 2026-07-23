@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.13 - 2026-07-24
+
+### Changed
+- Add a free TURN relay fallback to the default ICE config so calls can connect across restrictive/carrier-grade NATs, not just STUN-reachable networks.
+- Auto-detect the push provider by device token type instead of requiring a separate config flag, and fix a VAPID claim format bug - both silently blocked push delivery even with keys configured.
+- Show a live last-message preview, relative timestamp, unread badge, and most-recent-first ordering in the conversation list.
+- Add an admin-mediated "Forgot password?" flow: a login-screen request queues for review, and admins can set a new password (revoking the user's other sessions).
+- Increase touch targets for header icon buttons on mobile to the recommended 44px.
+
 ## v0.4.12 - 2026-07-23
 
 ### Changed

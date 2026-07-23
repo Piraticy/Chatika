@@ -39,6 +39,7 @@ export default function ChatLayout({
   messages,
   readByMessage,
   deliveredByMessage,
+  unreadCounts,
   onSelectRoom,
   onSend,
   onSendMedia,
@@ -298,7 +299,7 @@ export default function ChatLayout({
         <section className="friend-section">
           <div className="sidebar-label"><span>FRIENDS</span><span>{directRooms.length}</span></div>
           <div className="conversation-list">
-            {directRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} onClick={() => selectConversation(room.id)} />)}
+            {directRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} unread={unreadCounts?.[room.id] || 0} onClick={() => selectConversation(room.id)} />)}
             {!directRooms.length && <p className="sidebar-empty">Add a username to begin a private chat.</p>}
           </div>
         </section>
@@ -306,7 +307,7 @@ export default function ChatLayout({
         <section className="group-section">
           <div className="sidebar-label"><span>GROUPS</span><span>{groupRooms.length}</span></div>
           <div className="conversation-list">
-            {groupRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} onClick={() => selectConversation(room.id)} />)}
+            {groupRooms.map((room) => <ConversationButton key={room.id} room={room} me={me} active={room.id === activeRoomId} unread={unreadCounts?.[room.id] || 0} onClick={() => selectConversation(room.id)} />)}
           </div>
         </section>
 
@@ -361,9 +362,59 @@ export default function ChatLayout({
   );
 }
 
-function ConversationButton({ room, me, active, onClick }) {
+function ConversationButton({ room, me, active, unread, onClick }) {
   const other = room.participants?.find((participant) => participant.id !== me.id);
-  return <button className={active ? 'conversation-item active' : 'conversation-item'} onClick={onClick}><Avatar user={room.is_group ? { username: room.name } : other} /><span><strong>{roomLabel(room, me.id)}</strong><small>{room.is_group ? `${room.participants?.length || 0} members` : other?.is_online ? 'Online now' : formatLastSeen(other?.last_seen_at)}</small></span></button>;
+  return (
+    <button className={active ? 'conversation-item active' : 'conversation-item'} onClick={onClick}>
+      <Avatar user={room.is_group ? { username: room.name } : other} />
+      <span className="conversation-item-body">
+        <span className="conversation-item-top">
+          <strong>{roomLabel(room, me.id)}</strong>
+          {room.last_message_at && <time>{formatRelativeTime(room.last_message_at)}</time>}
+        </span>
+        <span className="conversation-item-bottom">
+          <small className={unread ? 'conversation-preview unread' : 'conversation-preview'}>{formatRoomPreview(room, me.id)}</small>
+          {unread > 0 && <b className="unread-badge">{unread > 99 ? '99+' : unread}</b>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function formatRoomPreview(room, myId) {
+  if (!room.last_message_type) {
+    if (room.is_group) return `${room.participants?.length || 0} members`;
+    const other = room.participants?.find((participant) => participant.id !== myId);
+    return other?.is_online ? 'Online now' : formatLastSeen(other?.last_seen_at);
+  }
+  if (room.last_message_type === 'call_log') {
+    try {
+      const call = JSON.parse(room.last_message_text || '{}');
+      const kind = call.kind === 'video' ? 'Video' : 'Audio';
+      if (call.outcome !== 'completed') return `Missed ${kind.toLowerCase()} call`;
+      return `${kind} call · ${formatDuration(call.duration_seconds || 0)}`;
+    } catch (_error) {
+      return 'Call';
+    }
+  }
+  const prefix = room.last_message_sender_id === myId ? 'You: ' : '';
+  if (room.last_message_type === 'image') return `${prefix}📷 Photo`;
+  if (room.last_message_type === 'video') return `${prefix}🎥 Video`;
+  if (room.last_message_type === 'voice') return `${prefix}🎤 Voice message`;
+  if (room.last_message_type === 'audio') return `${prefix}🎵 Audio`;
+  if (room.last_message_type === 'file') return `${prefix}📎 File`;
+  return `${prefix}${room.last_message_text || ''}`;
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 10080) return `${Math.floor(minutes / 1440)}d`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onReply, onReact }) {

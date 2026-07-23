@@ -27,10 +27,14 @@ class PushService:
                 return
             return
 
+        # Auto-detect by token shape/available keys rather than requiring an extra
+        # PUSH_PROVIDER switch to be kept in sync - a token that looks like an Expo
+        # token goes to Expo, everything else goes to web push if VAPID keys exist.
+        # push_provider is only consulted above for the explicit 'webhook' override.
         expo_tokens = [token for token in tokens if token.startswith('ExponentPushToken[')]
         web_tokens = [token for token in tokens if token not in expo_tokens]
 
-        if settings.push_provider in {'expo', 'multi'} and expo_tokens:
+        if expo_tokens:
             expo_payload = [
                 {
                     'to': token,
@@ -47,8 +51,14 @@ class PushService:
             except httpx.HTTPError:
                 pass
 
-        if settings.push_provider not in {'webpush', 'multi'} or not settings.vapid_private_key or not settings.vapid_claims_email:
+        if not web_tokens or not settings.vapid_private_key or not settings.vapid_claims_email:
             return
+
+        # The VAPID spec requires 'sub' to be a mailto: URI or https URL - a bare
+        # address (the natural thing to put in an env var) gets silently rejected
+        # by some push services otherwise.
+        claims_email = settings.vapid_claims_email
+        sub = claims_email if claims_email.startswith(('mailto:', 'http://', 'https://')) else f'mailto:{claims_email}'
 
         async def send_one(token: str) -> None:
             try:
@@ -57,7 +67,7 @@ class PushService:
                     subscription_info=json.loads(token),
                     data=json.dumps(payload),
                     vapid_private_key=settings.vapid_private_key,
-                    vapid_claims={'sub': settings.vapid_claims_email},
+                    vapid_claims={'sub': sub},
                 )
             except Exception:
                 return

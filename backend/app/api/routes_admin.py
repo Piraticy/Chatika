@@ -1,11 +1,13 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
 from app.db.session import get_db
-from app.models.entities import BetaFeedback, User
-from app.schemas.admin import AddUserInput, ApproveUserInput, RemoveUserInput
+from app.models.entities import BetaFeedback, SessionToken, User
+from app.schemas.admin import AddUserInput, ApproveUserInput, RemoveUserInput, ResetPasswordInput
 from app.services.security import hash_password
 
 router = APIRouter(prefix='/admin', tags=['admin'])
@@ -83,6 +85,47 @@ def remove_user(data: RemoveUserInput, _admin: User = Depends(get_current_admin)
     db.delete(user)
     db.commit()
     return {'message': 'User removed'}
+
+
+@router.get('/password-reset-requests')
+def password_reset_requests(_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> list[dict]:
+    users = db.scalars(
+        select(User)
+        .where(User.password_reset_requested_at.is_not(None))
+        .order_by(User.password_reset_requested_at.asc())
+    ).all()
+    return [
+        {
+            'id': user.id,
+            'username': user.username,
+            'phone_number': user.phone_number,
+            'requested_at': user.password_reset_requested_at.isoformat() if user.password_reset_requested_at else None,
+        }
+        for user in users
+    ]
+
+
+@router.post('/reset-password')
+def reset_password(data: ResetPasswordInput, _admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> dict:
+    user = db.get(User, data.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found')
+    user.password_hash = hash_password(data.new_password)
+    user.password_reset_requested_at = None
+    db.add(user)
+
+    # A password reset should also invalidate any session opened under the old
+    # password, so revoke every still-active refresh session for this user.
+    now = datetime.now(timezone.utc)
+    active_sessions = db.scalars(
+        select(SessionToken).where(SessionToken.user_id == user.id, SessionToken.revoked_at.is_(None))
+    ).all()
+    for session in active_sessions:
+        session.revoked_at = now
+        db.add(session)
+
+    db.commit()
+    return {'message': 'Password reset'}
 
 
 @router.post('/add-user')

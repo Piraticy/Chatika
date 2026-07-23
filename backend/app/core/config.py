@@ -37,9 +37,17 @@ class Settings(BaseSettings):
     vapid_claims_email: Optional[str] = None
 
     force_turn: bool = False
+    # STUN alone fails whenever either side is behind a restrictive/carrier-grade
+    # NAT (common on mobile networks) since there's no relay fallback. Open Relay
+    # is a free, shared TURN service - fine to unblock calls in beta, but has no
+    # uptime guarantee. Override via the ICE_SERVERS env var once a dedicated
+    # TURN provider (self-hosted coturn or a managed service) is set up.
     ice_servers: list[dict[str, Any]] = Field(
         default_factory=lambda: [
             {'urls': ['stun:stun.l.google.com:19302']},
+            {'urls': ['turn:openrelay.metered.ca:80'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
+            {'urls': ['turn:openrelay.metered.ca:443'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
+            {'urls': ['turn:openrelay.metered.ca:443?transport=tcp'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
         ]
     )
 
