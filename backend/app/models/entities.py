@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UUIDTimeMixin
@@ -26,6 +26,20 @@ class User(Base, UUIDTimeMixin):
     last_timezone: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     signup_device: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     last_device: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    beta_feedback_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class BetaFeedback(Base, UUIDTimeMixin):
+    __tablename__ = 'beta_feedback'
+    __table_args__ = (UniqueConstraint('user_id', name='uq_beta_feedback_user'),)
+
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    favorite_feature: Mapped[str] = mapped_column(String(40))
+    improvement_area: Mapped[str] = mapped_column(String(40))
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    app_version: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    platform: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
 
 class SessionToken(Base, UUIDTimeMixin):

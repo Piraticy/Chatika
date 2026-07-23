@@ -4,10 +4,12 @@ import AuthPanel from './components/AuthPanel';
 import AdminPanel from './components/AdminPanel';
 import CallDialog from './components/CallDialog';
 import ChatLayout from './components/ChatLayout';
+import BetaFeedbackModal from './components/BetaFeedbackModal';
 import ScreenShareDialog from './components/ScreenShareDialog';
 import { api, API_URL, uploadFile } from './lib/api';
 import { createSocket } from './lib/socket';
 import { enableWebPush } from './lib/push';
+import { APP_VERSION } from './lib/version';
 
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
@@ -34,6 +36,7 @@ export default function App() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
+  const [adminFeedback, setAdminFeedback] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [typingByRoom, setTypingByRoom] = useState({});
@@ -56,6 +59,8 @@ export default function App() {
   const [notificationStatus, setNotificationStatus] = useState(localStorage.getItem('chatika_notification_status') || 'idle');
   const [mediaError, setMediaError] = useState('');
   const [messageError, setMessageError] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
   const socketRef = useRef(null);
   const typingTimersRef = useRef({});
   const typingEmitRef = useRef({ roomId: '', state: false, at: 0 });
@@ -418,12 +423,33 @@ export default function App() {
     setAdminLoading(true);
     setAdminError('');
     try {
-      const users = await api('/admin/users', { token });
+      const [users, feedback] = await Promise.all([
+        api('/admin/users', { token }),
+        api('/admin/feedback', { token })
+      ]);
       setAdminUsers(users);
+      setAdminFeedback(feedback);
     } catch (error) {
       setAdminError(error.message);
     } finally {
       setAdminLoading(false);
+    }
+  }
+
+  async function submitBetaFeedback(payload) {
+    setFeedbackSubmitting(true);
+    setFeedbackError('');
+    try {
+      await api('/feedback/beta', {
+        method: 'POST',
+        token,
+        body: { ...payload, app_version: APP_VERSION, platform: 'web' }
+      });
+      setMe((current) => current ? { ...current, needs_beta_feedback: false } : current);
+    } catch (submitError) {
+      setFeedbackError(submitError.message);
+    } finally {
+      setFeedbackSubmitting(false);
     }
   }
 
@@ -454,6 +480,7 @@ export default function App() {
       setReadByMessage({});
       setPendingUsers([]);
       setAdminUsers([]);
+      setAdminFeedback([]);
       setAdminOpen(false);
       setInviteStatus(null);
       setMessageError('');
@@ -1023,12 +1050,19 @@ export default function App() {
       <AdminPanel
         open={adminOpen}
         users={adminUsers}
+        feedback={adminFeedback}
         loading={adminLoading}
         error={adminError}
         onClose={() => setAdminOpen(false)}
         onRefresh={loadAdminUsers}
         onApprove={approveUser}
         onRemove={removeUser}
+      />
+      <BetaFeedbackModal
+        open={Boolean(me?.needs_beta_feedback)}
+        submitting={feedbackSubmitting}
+        error={feedbackError}
+        onSubmit={submitBetaFeedback}
       />
     </>
   );

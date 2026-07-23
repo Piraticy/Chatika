@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ADMIN_USERNAME, get_current_user, is_designated_admin, validate_refresh_session
 from app.db.session import get_db
-from app.models.entities import SessionToken, User
+from app.models.entities import BetaFeedback, SessionToken, User
 from app.schemas.auth import LoginInput, LogoutInput, ProfileUpdateInput, RefreshInput, RegisterInput, TokenPair, UserMe
 from app.services.security import create_access_token, create_refresh_token, hash_password, verify_password
 
@@ -85,6 +85,7 @@ def register(data: RegisterInput, request: Request, db: Session = Depends(get_db
         password_hash=hash_password(data.password),
         is_admin=data.username.casefold() == ADMIN_USERNAME,
         is_approved=True,
+        beta_feedback_eligible=True,
     )
     _apply_client_context(user, data, request, signup=True)
     db.add(user)
@@ -129,7 +130,10 @@ def logout(data: LogoutInput, db: Session = Depends(get_db)) -> dict:
 
 
 @router.get('/me', response_model=UserMe)
-def me(current_user: User = Depends(get_current_user)) -> UserMe:
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> UserMe:
+    has_feedback = False
+    if current_user.beta_feedback_eligible:
+        has_feedback = db.scalar(select(BetaFeedback.id).where(BetaFeedback.user_id == current_user.id)) is not None
     return UserMe(
         id=current_user.id,
         username=current_user.username,
@@ -139,6 +143,7 @@ def me(current_user: User = Depends(get_current_user)) -> UserMe:
         is_approved=current_user.is_approved,
         is_online=current_user.is_online,
         last_seen_at=current_user.last_seen_at,
+        needs_beta_feedback=current_user.beta_feedback_eligible and not has_feedback,
     )
 
 
@@ -155,4 +160,4 @@ def update_profile(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
-    return me(current_user)
+    return me(current_user, db)

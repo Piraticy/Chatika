@@ -10,10 +10,11 @@ COPY alembic/versions/0005_profile_avatars.py ./alembic/versions/0005_profile_av
 COPY alembic/versions/0006_message_replies.py ./alembic/versions/0006_message_replies.py
 COPY alembic/versions/0007_admin_user_analytics.py ./alembic/versions/0007_admin_user_analytics.py
 COPY alembic/versions/0008_designated_admin.py ./alembic/versions/0008_designated_admin.py
+COPY alembic/versions/0009_beta_feedback.py ./alembic/versions/0009_beta_feedback.py
 COPY alembic.ini ./alembic.ini
 COPY web_dist ./web_dist
 
-RUN test -f ./alembic/versions/0005_profile_avatars.py && test -f ./alembic/versions/0006_message_replies.py && test -f ./alembic/versions/0007_admin_user_analytics.py && test -f ./alembic/versions/0008_designated_admin.py && alembic heads | grep -q '0008_designated_admin'
+RUN test -f ./alembic/versions/0005_profile_avatars.py && test -f ./alembic/versions/0006_message_replies.py && test -f ./alembic/versions/0007_admin_user_analytics.py && test -f ./alembic/versions/0008_designated_admin.py && test -f ./alembic/versions/0009_beta_feedback.py && alembic heads | grep -q '0009_beta_feedback'
 
 EXPOSE 10000
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

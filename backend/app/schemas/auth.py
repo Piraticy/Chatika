@@ -44,6 +44,7 @@ class UserMe(BaseModel):
     is_approved: bool
     is_online: bool
     last_seen_at: Optional[datetime]
+    needs_beta_feedback: bool
 
 
 class ProfileUpdateInput(BaseModel):

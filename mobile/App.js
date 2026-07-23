@@ -11,6 +11,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Modal,
   useWindowDimensions
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -86,6 +87,9 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [storageReady, setStorageReady] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [feedbackForm, setFeedbackForm] = useState({ rating: 0, favorite_feature: 'messaging', improvement_area: 'reliability', comment: '' });
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
 
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -344,6 +348,29 @@ export default function App() {
     }
   }
 
+  async function submitBetaFeedback() {
+    if (!feedbackForm.rating || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    setFeedbackError('');
+    try {
+      await api('/feedback/beta', {
+        method: 'POST',
+        token,
+        body: {
+          ...feedbackForm,
+          comment: feedbackForm.comment.trim() || null,
+          app_version: Constants.expoConfig?.version || '0.4.9',
+          platform: Platform.OS
+        }
+      });
+      setMe((current) => current ? { ...current, needs_beta_feedback: false } : current);
+    } catch (submitError) {
+      setFeedbackError(submitError.message);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
+
   const activeRoom = useMemo(() => rooms.find((r) => r.id === activeRoomId), [rooms, activeRoomId]);
   const activeOther = useMemo(
     () => activeRoom?.participants?.find((participant) => participant.id !== me.id),
@@ -463,7 +490,31 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.8</Text>
+      <Modal visible={Boolean(me.needs_beta_feedback)} transparent animationType="fade" onRequestClose={() => undefined}>
+        <View style={styles.feedbackBackdrop}>
+          <ScrollView contentContainerStyle={styles.feedbackModal} keyboardShouldPersistTaps="handled">
+            <Text style={styles.feedbackBeta}>BETA FEEDBACK</Text>
+            <Text style={styles.feedbackTitle}>Help shape Chatika</Text>
+            <Text style={styles.feedbackIntro}>Three quick answers. You will only see this once.</Text>
+            <Text style={styles.feedbackLabel}>How is your first experience?</Text>
+            <View style={styles.feedbackOptions}>
+              {[1, 2, 3, 4, 5].map((rating) => <TouchableOpacity key={rating} onPress={() => setFeedbackForm((current) => ({ ...current, rating }))} style={[styles.feedbackChoice, feedbackForm.rating === rating && styles.feedbackChoiceActive]}><Text style={styles.feedbackChoiceText}>{rating}</Text></TouchableOpacity>)}
+            </View>
+            <Text style={styles.feedbackLabel}>What do you like most?</Text>
+            <View style={styles.feedbackWrapOptions}>
+              {[['messaging', 'Messaging'], ['calls', 'Calls'], ['media', 'Media'], ['design', 'Design'], ['speed', 'Speed']].map(([value, label]) => <TouchableOpacity key={value} onPress={() => setFeedbackForm((current) => ({ ...current, favorite_feature: value }))} style={[styles.feedbackPill, feedbackForm.favorite_feature === value && styles.feedbackPillActive]}><Text style={styles.feedbackPillText}>{label}</Text></TouchableOpacity>)}
+            </View>
+            <Text style={styles.feedbackLabel}>What should we improve first?</Text>
+            <View style={styles.feedbackWrapOptions}>
+              {[['reliability', 'Reliability'], ['calls', 'Calls'], ['mobile_ui', 'Mobile layout'], ['notifications', 'Notifications'], ['other', 'Other']].map(([value, label]) => <TouchableOpacity key={value} onPress={() => setFeedbackForm((current) => ({ ...current, improvement_area: value }))} style={[styles.feedbackPill, feedbackForm.improvement_area === value && styles.feedbackPillActive]}><Text style={styles.feedbackPillText}>{label}</Text></TouchableOpacity>)}
+            </View>
+            <TextInput style={styles.feedbackComment} value={feedbackForm.comment} onChangeText={(comment) => setFeedbackForm((current) => ({ ...current, comment }))} placeholder="Anything else? (optional)" placeholderTextColor="#718591" maxLength={500} multiline />
+            {feedbackError ? <Text style={styles.error}>{feedbackError}</Text> : null}
+            <TouchableOpacity disabled={!feedbackForm.rating || feedbackSubmitting} onPress={submitBetaFeedback} style={[styles.feedbackSubmit, (!feedbackForm.rating || feedbackSubmitting) && styles.feedbackSubmitDisabled]}><Text style={styles.feedbackSubmitText}>{feedbackSubmitting ? 'Sending…' : 'Send feedback'}</Text></TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.9</Text>
     </SafeAreaView>
   );
 }
@@ -639,5 +690,23 @@ const styles = StyleSheet.create({
     color: '#0a1221',
     fontWeight: '700'
   },
+  feedbackBackdrop: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: 'rgba(3,10,20,.72)' },
+  feedbackModal: { borderRadius: 24, padding: 20, backgroundColor: '#f7fbff' },
+  feedbackBeta: { color: '#0798a4', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  feedbackTitle: { color: '#0a1221', fontSize: 27, fontWeight: '800', marginTop: 7 },
+  feedbackIntro: { color: '#718591', fontSize: 13, marginTop: 4, marginBottom: 18 },
+  feedbackLabel: { color: '#294254', fontSize: 12, fontWeight: '800', marginTop: 10, marginBottom: 8 },
+  feedbackOptions: { flexDirection: 'row', gap: 7 },
+  feedbackChoice: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: '#d9e4ea', borderRadius: 11, paddingVertical: 11, backgroundColor: '#fff' },
+  feedbackChoiceActive: { borderColor: '#14d2e2', backgroundColor: '#dffbfc' },
+  feedbackChoiceText: { color: '#0a1221', fontWeight: '800' },
+  feedbackWrapOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  feedbackPill: { borderWidth: 1, borderColor: '#d9e4ea', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff' },
+  feedbackPillActive: { borderColor: '#14d2e2', backgroundColor: '#dffbfc' },
+  feedbackPillText: { color: '#294254', fontSize: 12, fontWeight: '700' },
+  feedbackComment: { minHeight: 74, marginTop: 16, borderWidth: 1, borderColor: '#d9e4ea', borderRadius: 12, padding: 12, color: '#0a1221', backgroundColor: '#fff', textAlignVertical: 'top' },
+  feedbackSubmit: { alignItems: 'center', borderRadius: 13, paddingVertical: 14, marginTop: 14, backgroundColor: '#0a1221' },
+  feedbackSubmitDisabled: { opacity: .45 },
+  feedbackSubmitText: { color: '#fff', fontWeight: '800' },
   mobileCredit: { color: '#718591', textAlign: 'center', fontSize: 10, marginTop: 8, marginBottom: 2 }
 });

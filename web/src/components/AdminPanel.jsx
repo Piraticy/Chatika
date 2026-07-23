@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 
-export default function AdminPanel({ open, users = [], loading, error, onClose, onRefresh, onApprove, onRemove }) {
+export default function AdminPanel({ open, users = [], feedback = [], loading, error, onClose, onRefresh, onApprove, onRemove }) {
   const [query, setQuery] = useState('');
 
   const analytics = useMemo(() => buildAnalytics(users), [users]);
+  const feedbackAnalytics = useMemo(() => buildFeedbackAnalytics(feedback), [feedback]);
   const filteredUsers = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return users;
@@ -58,6 +59,26 @@ export default function AdminPanel({ open, users = [], loading, error, onClose, 
             </div>
           </section>
         </div>
+
+        <section className="admin-feedback-card">
+          <div className="admin-insight-title"><strong>Beta feedback</strong><span>{feedback.length} response{feedback.length === 1 ? '' : 's'}</span></div>
+          <div className="feedback-summary">
+            <Metric label="Average rating" value={feedbackAnalytics.average ? `${feedbackAnalytics.average}/5` : '—'} accent="green" />
+            <div className="feedback-priority"><span>Top improvement</span><strong>{feedbackAnalytics.topImprovement || 'Waiting for feedback'}</strong></div>
+            <div className="feedback-priority"><span>Most loved</span><strong>{feedbackAnalytics.topFavorite || 'Waiting for feedback'}</strong></div>
+          </div>
+          <div className="feedback-list">
+            {feedback.slice(0, 8).map((item) => (
+              <article key={item.id}>
+                <div><strong>@{item.username}</strong><span>{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</span></div>
+                <small>{feedbackLabel(item.favorite_feature)} · Improve {feedbackLabel(item.improvement_area)}</small>
+                {item.comment && <p>{item.comment}</p>}
+                <time>{item.created_at ? formatDate(item.created_at) : ''} · {item.platform || 'unknown'} · v{item.app_version || '—'}</time>
+              </article>
+            ))}
+            {!feedback.length && <small>No beta responses yet.</small>}
+          </div>
+        </section>
 
         <div className="admin-toolbar">
           <label className="admin-search">
@@ -139,6 +160,18 @@ function buildAnalytics(users) {
     countries,
     devices
   };
+}
+
+function buildFeedbackAnalytics(feedback) {
+  if (!feedback.length) return { average: 0, topFavorite: '', topImprovement: '' };
+  const average = (feedback.reduce((total, item) => total + item.rating, 0) / feedback.length).toFixed(1);
+  const topFavorite = countBy(feedback, (item) => item.favorite_feature).sort((a, b) => b.count - a.count)[0]?.name;
+  const topImprovement = countBy(feedback, (item) => item.improvement_area).sort((a, b) => b.count - a.count)[0]?.name;
+  return { average, topFavorite: feedbackLabel(topFavorite), topImprovement: feedbackLabel(topImprovement) };
+}
+
+function feedbackLabel(value) {
+  return ({ messaging: 'Messaging', calls: 'Calls', media: 'Photos & voice', design: 'Design', speed: 'Speed', reliability: 'Reliability', mobile_ui: 'Mobile layout', notifications: 'Notifications', other: 'Other' })[value] || value || 'Unknown';
 }
 
 function countBy(items, getKey) {

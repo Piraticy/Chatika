@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chatika-shell-v8';
+const CACHE_NAME = 'chatika-shell-v9';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',

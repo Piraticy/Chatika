@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
 from app.db.session import get_db
-from app.models.entities import User
+from app.models.entities import BetaFeedback, User
 from app.schemas.admin import AddUserInput, ApproveUserInput, RemoveUserInput
 from app.services.security import hash_password
 
@@ -38,6 +38,29 @@ def list_users(_admin: User = Depends(get_current_admin), db: Session = Depends(
             'signup_device': user.signup_device,
         }
         for user in users
+    ]
+
+
+@router.get('/feedback')
+def list_feedback(_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.execute(
+        select(BetaFeedback, User.username)
+        .join(User, User.id == BetaFeedback.user_id)
+        .order_by(BetaFeedback.created_at.desc())
+    ).all()
+    return [
+        {
+            'id': feedback.id,
+            'username': username,
+            'rating': feedback.rating,
+            'favorite_feature': feedback.favorite_feature,
+            'improvement_area': feedback.improvement_area,
+            'comment': feedback.comment,
+            'app_version': feedback.app_version,
+            'platform': feedback.platform,
+            'created_at': feedback.created_at.isoformat() if feedback.created_at else None,
+        }
+        for feedback, username in rows
     ]
 
 
