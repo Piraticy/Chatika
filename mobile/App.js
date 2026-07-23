@@ -359,7 +359,7 @@ export default function App() {
         body: {
           ...feedbackForm,
           comment: feedbackForm.comment.trim() || null,
-          app_version: Constants.expoConfig?.version || '0.4.9',
+          app_version: Constants.expoConfig?.version || '0.4.10',
           platform: Platform.OS
         }
       });
@@ -514,7 +514,7 @@ export default function App() {
           </ScrollView>
         </View>
       </Modal>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.9</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.10</Text>
     </SafeAreaView>
   );
 }

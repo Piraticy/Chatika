@@ -133,12 +133,13 @@ export default function ChatLayout({
 
   async function submitDirect(event) {
     event.preventDefault();
-    const username = String(new FormData(event.currentTarget).get('username') || '').trim();
+    const formElement = event.currentTarget;
+    const username = String(new FormData(formElement).get('username') || '').trim();
     if (!username) return;
     setLocalError('');
     try {
       await onStartDirect(username);
-      event.currentTarget.reset();
+      formElement.reset();
       setSidebarOpen(false);
     } catch (error) {
       setLocalError(error.message || 'Could not start this chat.');
@@ -147,14 +148,15 @@ export default function ChatLayout({
 
   async function submitGroup(event) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const name = String(form.get('name') || '').trim();
     const usernames = String(form.get('usernames') || '').split(',').map((value) => value.trim()).filter(Boolean);
     if (!name || !usernames.length) return;
     setLocalError('');
     try {
       await onCreateGroup(name, usernames);
-      event.currentTarget.reset();
+      formElement.reset();
       setGroupOpen(false);
       setSidebarOpen(false);
     } catch (error) {
