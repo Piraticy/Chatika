@@ -132,7 +132,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                         },
                     )
                     await _push_realtime_alerts(db, [target_user_id], user, data)
-            elif event == 'message:read':
+            elif event in ('message:read', 'message:delivered'):
                 room_id = incoming.get('room_id')
                 requested_ids = incoming.get('message_ids', [])
                 if not room_id or not isinstance(requested_ids, list):
@@ -148,23 +148,24 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 message_ids = [str(message_id) for message_id in requested_ids[:100] if message_id]
                 if not message_ids:
                     continue
-                readable_messages = db.scalars(
+                acked_messages = db.scalars(
                     select(Message).where(
                         Message.room_id == room_id,
                         Message.id.in_(message_ids),
                     )
                 ).all()
-                readable_ids = [message.id for message in readable_messages]
-                owner_ids = list(dict.fromkeys(message.sender_id for message in readable_messages))
-                if readable_ids and owner_ids:
+                acked_ids = [message.id for message in acked_messages]
+                owner_ids = list(dict.fromkeys(message.sender_id for message in acked_messages))
+                if acked_ids and owner_ids:
+                    acker_field = 'reader_id' if event == 'message:read' else 'recipient_id'
                     await ws_manager.broadcast_users(
                         owner_ids,
                         {
-                            'event': 'message:read',
+                            'event': event,
                             'data': {
                                 'room_id': room_id,
-                                'message_ids': readable_ids,
-                                'reader_id': user.id,
+                                'message_ids': acked_ids,
+                                acker_field: user.id,
                             },
                         },
                     )

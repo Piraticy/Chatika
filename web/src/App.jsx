@@ -42,6 +42,7 @@ export default function App() {
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
   const [readByMessage, setReadByMessage] = useState({});
+  const [deliveredByMessage, setDeliveredByMessage] = useState({});
   const [pendingUsers, setPendingUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
@@ -86,9 +87,15 @@ export default function App() {
   const callPendingIceRef = useRef(new Map());
   const remoteCallStreamsRef = useRef(new Map());
   const callRetryTimersRef = useRef(new Map());
+  const shareRetryTimersRef = useRef(new Map());
+  const callInitiatorRef = useRef(false);
+  const callRoomIdRef = useRef('');
+  const callConnectedAtRef = useRef(null);
+  const callLoggedRef = useRef(false);
   const iceTransportPolicyRef = useRef('all');
   const readReceiptTimerRef = useRef(null);
   const refreshPromiseRef = useRef(null);
+  const socketHandlersRef = useRef({ onEvent: () => {}, onOpen: () => {} });
 
   const isAuthed = Boolean(token && me);
 
@@ -113,10 +120,14 @@ export default function App() {
   }, []);
 
   async function hydrateSession(currentToken) {
-    const meData = await api('/auth/me', { token: currentToken });
+    // /auth/me and /chat/rooms don't depend on each other - only /admin/pending-users
+    // needs to know the resolved user first. Fetching sequentially doubled the
+    // wait on every cold start.
+    const [meData, roomData] = await Promise.all([
+      api('/auth/me', { token: currentToken }),
+      api('/chat/rooms', { token: currentToken })
+    ]);
     setMe(meData);
-
-    const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
     setActiveRoomId('');
     setMessages([]);
@@ -247,16 +258,26 @@ export default function App() {
     };
   }, [token, refreshToken, sessionRetry]);
 
+  // Kept fresh on every render so the long-lived socket below never needs to
+  // reconnect just because activeRoomId/me/call state changed - reconnecting
+  // on every room switch was both slow (full WS handshake + presence write)
+  // and forced other closures (like handleCallSignal) to run stale.
   useEffect(() => {
-    if (!isAuthed) return undefined;
-
-    const socket = createSocket({
-      apiUrl: API_URL,
-      token,
+    socketHandlersRef.current = {
       onEvent: (evt) => {
-        if (evt.event === 'message:new' && evt.data.room_id === activeRoomId) {
-          if (evt.data.sender_id === me.id) return;
-          setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
+        if (evt.event === 'message:new') {
+          if (evt.data.sender_id !== me.id) sendDeliveryReceipt(evt.data.room_id, [evt.data.id]);
+          if (evt.data.room_id === activeRoomId && evt.data.sender_id !== me.id) {
+            setMessages((prev) => (prev.some((message) => message.id === evt.data.id) ? prev : [evt.data, ...prev]));
+          }
+        } else if (evt.event === 'message:delivered' && evt.data.recipient_id !== me.id) {
+          setDeliveredByMessage((prev) => {
+            const next = { ...prev };
+            (evt.data.message_ids || []).forEach((messageId) => {
+              next[messageId] = true;
+            });
+            return next;
+          });
         } else if (evt.event === 'message:read' && evt.data.room_id === activeRoomId && evt.data.reader_id !== me.id) {
           setReadByMessage((prev) => {
             const next = { ...prev };
@@ -323,6 +344,17 @@ export default function App() {
         setMe((current) => current ? { ...current, is_online: true, last_seen_at: null } : current);
         scheduleReadReceipts(messages);
       }
+    };
+  });
+
+  useEffect(() => {
+    if (!isAuthed) return undefined;
+
+    const socket = createSocket({
+      apiUrl: API_URL,
+      token,
+      onEvent: (evt) => socketHandlersRef.current.onEvent(evt),
+      onOpen: () => socketHandlersRef.current.onOpen()
     });
     socketRef.current = socket;
 
@@ -330,12 +362,15 @@ export default function App() {
       socketRef.current = null;
       socket.close();
     };
-  }, [isAuthed, token, activeRoomId, me?.id]);
+  }, [isAuthed, token]);
 
   useEffect(() => {
     if (!token || !activeRoomId) return;
     authedApi(`/chat/rooms/${activeRoomId}/messages?limit=${dataSaver ? 40 : 80}`, { token })
-      .then(setMessages)
+      .then((data) => {
+        setMessages(data);
+        sendDeliveryReceipt(activeRoomId, data.filter((message) => message.sender_id !== me?.id).map((message) => message.id));
+      })
       .catch(() => setMessages([]));
   }, [activeRoomId, token, dataSaver]);
 
@@ -398,6 +433,16 @@ export default function App() {
           : participant
       ))
     })));
+  }
+
+  // "Delivered" = this device received the message (realtime push or a later
+  // fetch), independent of whether the recipient has actually opened the
+  // room yet. "Read" (below) stays reserved for that latter, stronger signal.
+  function sendDeliveryReceipt(roomId, messageIds) {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !roomId) return;
+    const ids = (messageIds || []).filter((id) => !String(id).startsWith('local-'));
+    if (!ids.length) return;
+    socketRef.current.send(JSON.stringify({ event: 'message:delivered', room_id: roomId, message_ids: ids }));
   }
 
   function sendReadReceipts(candidateMessages = messages) {
@@ -565,6 +610,7 @@ export default function App() {
       setActiveRoomId('');
       setMessages([]);
       setReadByMessage({});
+      setDeliveredByMessage({});
       setPendingUsers([]);
       setAdminUsers([]);
       setAdminFeedback([]);
@@ -633,7 +679,18 @@ export default function App() {
       setRemoteStreams((prev) => ({ ...prev, [userId]: remoteStream }));
     };
     peer.onconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(peer.connectionState)) {
+      if (peer.connectionState === 'disconnected') {
+        scheduleShareRetry(userId);
+      }
+      if (peer.connectionState === 'failed') {
+        scheduleShareRetry(userId, true);
+      }
+      if (peer.connectionState === 'closed') {
+        const pendingRetry = shareRetryTimersRef.current.get(userId);
+        if (pendingRetry) {
+          window.clearTimeout(pendingRetry);
+          shareRetryTimersRef.current.delete(userId);
+        }
         peer.close();
         peerConnectionsRef.current.delete(userId);
         peerRoomIdsRef.current.delete(userId);
@@ -645,8 +702,34 @@ export default function App() {
         });
       }
     };
+    // iceConnectionState often flips to 'failed' before connectionState catches up,
+    // so it's checked too as an earlier trigger for the same retry.
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === 'failed') scheduleShareRetry(userId, true);
+    };
     peerConnectionsRef.current.set(userId, peer);
     return peer;
+  }
+
+  function scheduleShareRetry(userId, immediate = false) {
+    if (shareRetryTimersRef.current.has(userId)) return;
+    const timer = window.setTimeout(() => {
+      shareRetryTimersRef.current.delete(userId);
+      renegotiateSharePeer(userId);
+    }, immediate ? 100 : 1200);
+    shareRetryTimersRef.current.set(userId, timer);
+  }
+
+  async function renegotiateSharePeer(userId) {
+    const peer = peerConnectionsRef.current.get(userId);
+    if (!peer || peer.signalingState !== 'stable' || !localShareStreamRef.current) return;
+    try {
+      const offer = await peer.createOffer({ iceRestart: true });
+      await peer.setLocalDescription(offer);
+      sendCallSignal(userId, { type: 'offer', description: offer, restart: true }, peerRoomIdsRef.current.get(userId));
+    } catch (_error) {
+      setShareError('The screen share connection could not be restored.');
+    }
   }
 
   async function createCallPeerConnection(userId, kind, roomId = activeRoomId) {
@@ -675,6 +758,7 @@ export default function App() {
       if (peer.connectionState === 'connected') {
         stopChatikaRingtone();
         setCallConnectionStatus('Live');
+        if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
       }
       if (peer.connectionState === 'disconnected') {
         setCallConnectionStatus('Reconnecting');
@@ -685,6 +769,11 @@ export default function App() {
         scheduleCallRetry(userId, kind, true);
       }
       if (peer.connectionState === 'closed') {
+        const pendingRetry = callRetryTimersRef.current.get(userId);
+        if (pendingRetry) {
+          window.clearTimeout(pendingRetry);
+          callRetryTimersRef.current.delete(userId);
+        }
         peer.close();
         callPeerConnectionsRef.current.delete(userId);
         callPeerRoomIdsRef.current.delete(userId);
@@ -696,13 +785,21 @@ export default function App() {
         });
       }
     };
+    // iceConnectionState often flips to 'failed' before connectionState catches up,
+    // so it's checked too as an earlier trigger for the same retry.
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === 'failed') scheduleCallRetry(userId, kind, true);
+    };
     callPeerConnectionsRef.current.set(userId, peer);
     return peer;
   }
 
   async function startCall(kind) {
+    if (callActive || incomingCall) {
+      setCallError('Finish or decline your current call first.');
+      return;
+    }
     setCallError('');
-    setIncomingCall(null);
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
       setCallError('Calls are not supported in this browser. Use the latest browser over HTTPS.');
       return;
@@ -732,6 +829,10 @@ export default function App() {
       setCallConnectionStatus('Ringing');
       setCallActive(true);
       setCallDialogOpen(true);
+      callInitiatorRef.current = true;
+      callRoomIdRef.current = activeRoomId;
+      callConnectedAtRef.current = null;
+      callLoggedRef.current = false;
 
       const participants = (rooms.find((room) => room.id === activeRoomId)?.participant_ids || []).filter((id) => id !== me.id);
       await Promise.all(participants.map(async (userId) => {
@@ -769,6 +870,10 @@ export default function App() {
       setCallConnectionStatus('Connecting');
       setCallActive(true);
       setCallDialogOpen(true);
+      callInitiatorRef.current = false;
+      callRoomIdRef.current = call.roomId;
+      callConnectedAtRef.current = null;
+      callLoggedRef.current = false;
       const peer = await createCallPeerConnection(call.fromUserId, call.kind, call.roomId);
       await peer.setRemoteDescription(call.description);
       const pending = callPendingIceRef.current.get(call.fromUserId) || [];
@@ -790,8 +895,40 @@ export default function App() {
     setCallDialogOpen(false);
   }
 
+  // Only the initiating side logs the call so both parties don't each write their
+  // own duplicate entry - the record is a normal chat message, so it shows up for
+  // everyone in the room the same way any other message does.
+  async function logCallRecord(kind, outcome, durationSeconds) {
+    const roomId = callRoomIdRef.current;
+    if (!roomId) return;
+    try {
+      const sent = await authedApi('/chat/messages', {
+        method: 'POST',
+        token,
+        body: {
+          room_id: roomId,
+          text: JSON.stringify({ kind, outcome, duration_seconds: durationSeconds }),
+          message_type: 'call_log'
+        }
+      });
+      if (roomId === activeRoomId) setMessages((prev) => [sent, ...prev]);
+    } catch (_error) {
+      // best-effort - a missing call record shouldn't block hanging up
+    }
+  }
+
   function stopCall(notify = true) {
     stopChatikaRingtone();
+    if (callInitiatorRef.current && !callLoggedRef.current) {
+      callLoggedRef.current = true;
+      const outcome = callConnectedAtRef.current ? 'completed' : 'missed';
+      const durationSeconds = callConnectedAtRef.current
+        ? Math.max(0, Math.round((Date.now() - callConnectedAtRef.current) / 1000))
+        : 0;
+      logCallRecord(callKind, outcome, durationSeconds);
+    }
+    callInitiatorRef.current = false;
+    callConnectedAtRef.current = null;
     if (notify) {
       callPeerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'call-hangup' }, callPeerRoomIdsRef.current.get(userId)));
     }
@@ -912,6 +1049,8 @@ export default function App() {
     peerConnectionsRef.current.clear();
     peerRoomIdsRef.current.clear();
     pendingIceRef.current.clear();
+    shareRetryTimersRef.current.forEach((timer) => clearTimeout(timer));
+    shareRetryTimersRef.current.clear();
   }
 
   async function handleShareSignal(userId, data, roomId) {
@@ -971,6 +1110,10 @@ export default function App() {
         setCallConnectionStatus('Connecting');
         return;
       }
+      if (callActive || incomingCall) {
+        sendCallSignal(userId, { type: 'call-hangup', reason: 'busy' }, roomId);
+        return;
+      }
       setIncomingCall({ fromUserId: userId, roomId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
       startChatikaRingtone('incoming');
       setCallDialogOpen(true);
@@ -995,6 +1138,7 @@ export default function App() {
       if (peer.remoteDescription) await peer.addIceCandidate(data.candidate);
       else callPendingIceRef.current.set(userId, [...(callPendingIceRef.current.get(userId) || []), data.candidate]);
     } else if (data.type === 'call-hangup') {
+      if (data.reason === 'busy') setCallError(`@${evt.from_username || 'They'} are on another call.`);
       const peer = callPeerConnectionsRef.current.get(userId);
       if (!peer) {
         if (!callPeerConnectionsRef.current.size) stopCall(false);
@@ -1076,6 +1220,7 @@ export default function App() {
         activeRoomId={activeRoomId}
         messages={messages}
         readByMessage={readByMessage}
+        deliveredByMessage={deliveredByMessage}
         onSelectRoom={setActiveRoomId}
         onSend={sendMessage}
         onSendMedia={sendMedia}
@@ -1102,9 +1247,14 @@ export default function App() {
         onToggleDataSaver={() => setDataSaver((value) => !value)}
         callActive={callActive}
         onStartCall={(kind) => {
+          if (callActive || incomingCall) {
+            setCallError('Finish or decline your current call first.');
+            setCallDialogOpen(true);
+            return;
+          }
           setCallError('');
           setCallDialogOpen(true);
-          if (kind && !callActive) startCall(kind);
+          if (kind) startCall(kind);
         }}
         shareActive={shareActive}
         onShareScreen={() => {

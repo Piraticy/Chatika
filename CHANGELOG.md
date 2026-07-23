@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.12 - 2026-07-23
+
+### Changed
+- Show delivered (2 gray dots) vs read (2 green dots) message status, backed by a new delivery-receipt event.
+- Reconnect the realtime socket automatically after a dropped connection instead of going silent until reload; stop reconnecting on every room switch.
+- Load the signed-in profile and room list in parallel on startup instead of sequentially.
+- Record calls (audio/video, completed or missed, with duration) as messages in the chat.
+- Make the in-call speaker toggle actually mute remote audio instead of just lowering its volume.
+- Reject a second incoming call with a busy signal while already on a call, instead of stacking the incoming-call UI on top.
+- Add automatic reconnect/ICE-restart to screen sharing on connection failure, matching the existing call behavior.
+
 ## v0.4.11 - 2026-07-23
 
 ### Changed

@@ -38,6 +38,7 @@ export default function ChatLayout({
   activeRoomId,
   messages,
   readByMessage,
+  deliveredByMessage,
   onSelectRoom,
   onSend,
   onSendMedia,
@@ -338,7 +339,7 @@ export default function ChatLayout({
         </header>
         <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
           {!orderedMessages.length && <div className="empty-chat"><h3>{activeRoom ? 'Say hello' : 'Start a conversation'}</h3><p>{activeRoom ? 'Messages, calls, and media stay together here.' : 'Add a friend by their Chatika username.'}</p></div>}
-          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={() => setActionMessageId((value) => value === message.id ? null : message.id)} onReply={startReply} onReact={chooseReaction} />)}
+          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} delivered={Boolean(deliveredByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={() => setActionMessageId((value) => value === message.id ? null : message.id)} onReply={startReply} onReact={chooseReaction} />)}
           {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
         <div className="compose-area">
@@ -365,7 +366,9 @@ function ConversationButton({ room, me, active, onClick }) {
   return <button className={active ? 'conversation-item active' : 'conversation-item'} onClick={onClick}><Avatar user={room.is_group ? { username: room.name } : other} /><span><strong>{roomLabel(room, me.id)}</strong><small>{room.is_group ? `${room.participants?.length || 0} members` : other?.is_online ? 'Online now' : formatLastSeen(other?.last_seen_at)}</small></span></button>;
 }
 
-function MessageBubble({ message, me, read, actionOpen, onToggle, onReply, onReact }) {
+function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onReply, onReact }) {
+  if (message.message_type === 'call_log') return <CallLogNotice message={message} mine={message.sender_id === me.id} />;
+
   const reactions = Object.entries(message.reaction_users || {}).filter(([, users]) => users?.length);
   const holdTimerRef = useRef(null);
   const longPressedRef = useRef(false);
@@ -388,8 +391,35 @@ function MessageBubble({ message, me, read, actionOpen, onToggle, onReply, onRea
     {message.text && <p>{renderText(message.text, message.id)}</p>}
     {actionOpen && <div className="message-action-menu" onClick={(event) => event.stopPropagation()}><button type="button" className="reply-action" onClick={() => onReply(message)}>↩ Reply</button>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
     {reactions.length > 0 && <div className="reaction-summary">{reactions.map(([emoji, users]) => <span key={emoji} className={users.includes(me.id) ? 'reaction-chip mine' : 'reaction-chip'}>{renderText(emoji, `${message.id}-${emoji}`)} {users.length}</span>)}</div>}
-    <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} />}</div>
+    <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} delivered={delivered} />}</div>
   </article>;
+}
+
+function CallLogNotice({ message, mine }) {
+  let call = null;
+  try {
+    call = JSON.parse(message.text || '{}');
+  } catch (_error) {
+    call = null;
+  }
+  const kind = call?.kind === 'video' ? 'Video' : 'Audio';
+  const missed = call?.outcome !== 'completed';
+  const label = missed ? `Missed ${kind.toLowerCase()} call` : `${kind} call · ${formatDuration(call?.duration_seconds || 0)}`;
+  return (
+    <div className="call-log-row">
+      <span className={missed ? 'call-log-chip missed' : 'call-log-chip'}>
+        <CallLogIcon kind={kind} missed={missed} />
+        {mine ? label : `${label} from @${message.sender_username || 'friend'}`}
+        <time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+      </span>
+    </div>
+  );
+}
+
+function CallLogIcon({ kind, missed }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (kind === 'Video') return <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect {...common} x="3" y="6" width="12" height="12" rx="3" /><path {...common} d="m15 10 5-3v10l-5-3" />{missed && <path {...common} d="M4 4 20 20" />}</svg>;
+  return <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path {...common} d="M7 4 9.4 8.5l-2 2.1a15 15 0 0 0 6 6l2.1-2L20 17l-.8 3a2 2 0 0 1-2 1.4A16.4 16.4 0 0 1 2.6 6.8 2 2 0 0 1 4 4.8L7 4Z" />{missed && <path {...common} d="M4 4 20 20" />}</svg>;
 }
 
 function MessageMedia({ message }) {
@@ -400,7 +430,10 @@ function MessageMedia({ message }) {
   return <a className="message-file" href={url} target="_blank" rel="noreferrer">Open shared file</a>;
 }
 
-function MessageStatus({ read }) { return <span className={read ? 'message-status read' : 'message-status'}><i />{read && <i />}</span>; }
+function MessageStatus({ read, delivered }) {
+  const showSecondDot = read || delivered;
+  return <span className={read ? 'message-status read' : 'message-status'}><i />{showSecondDot && <i />}</span>;
+}
 function formatDuration(seconds) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
 function renderText(text, keyPrefix) { return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => { const emoji = findChatikaEmoji(part); return emoji ? <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} /> : part; }); }
 function ChatikaEmoji({ emoji }) { return <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label}>{emoji.glyph}</span>; }

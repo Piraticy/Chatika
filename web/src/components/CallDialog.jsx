@@ -104,7 +104,7 @@ export default function CallDialog({
           ) : active ? (
             <>
               <button type="button" className={`call-control ${muted ? 'control-on' : ''}`} onClick={onToggleMute}><CallIcon name={muted ? 'micOff' : 'mic'} /><span>{muted ? 'Unmute' : 'Mute'}</span></button>
-              <button type="button" className={`call-control speaker-control ${speakerOn ? 'control-on' : ''}`} onClick={onToggleSpeaker}><CallIcon name={speakerOn ? 'speaker' : 'speakerOff'} /><span>{speakerOn ? 'Speaker' : 'Quiet'}</span></button>
+              <button type="button" className={`call-control speaker-control ${speakerOn ? 'control-on' : ''}`} onClick={onToggleSpeaker}><CallIcon name={speakerOn ? 'speaker' : 'speakerOff'} /><span>{speakerOn ? 'Speaker' : 'Muted'}</span></button>
               {isVideo && <button type="button" className={`call-control ${cameraOff ? 'control-on' : ''}`} onClick={onToggleCamera}><CallIcon name={cameraOff ? 'videoOff' : 'video'} /><span>{cameraOff ? 'Camera on' : 'Camera off'}</span></button>}
               <button type="button" className="call-control end-control" onClick={onHangup}><CallIcon name="phoneOff" /><span>End</span></button>
             </>
@@ -131,7 +131,11 @@ function RemoteCallMedia({ userId, username, profile, stream, video, speakerOn }
     const media = mediaRef.current;
     if (!media) return;
     media.srcObject = stream;
-    media.volume = speakerOn ? 1 : 0.35;
+    // Real earpiece/speaker output routing (setSinkId) isn't available in Safari/WebKit,
+    // so this can only toggle whether remote audio is actually audible, not which
+    // physical output it plays from.
+    media.volume = speakerOn ? 1 : 0;
+    media.muted = !speakerOn;
     if (speakerOn && typeof media.setSinkId === 'function') media.setSinkId('default').catch(() => undefined);
   }, [speakerOn, stream]);
   if (video) return <div className="remote-call-media portrait-remote-video"><video ref={mediaRef} className="call-video" autoPlay playsInline /><span>@{username || userId.slice(0, 6)}</span></div>;

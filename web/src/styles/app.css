@@ -239,6 +239,10 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 .message-status { display: inline-flex; align-items: center; gap: 2px; min-width: 6px; color: #82a3ad; }
 .message-status i { display: block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 .message-status.read { color: #31b87e; }
+.call-log-row { display: flex; justify-content: center; margin: 4px 0; }
+.call-log-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: rgba(130, 163, 173, .12); color: var(--muted); font-size: .62rem; font-weight: 650; }
+.call-log-chip.missed { background: rgba(217, 92, 92, .12); color: #c14f4f; }
+.call-log-chip time { color: inherit; opacity: .65; font-size: .58rem; margin-left: 2px; }
 .reaction-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 5px; }
 .reaction-summary { display: flex; flex-wrap: wrap; gap: 4px; }
 .reaction-btn { border: 0; border-radius: 999px; cursor: pointer; padding: 3px 6px; color: var(--ink-soft); background: #eef5ee; font-size: .77rem; }
