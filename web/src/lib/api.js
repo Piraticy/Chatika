@@ -18,7 +18,9 @@ export async function api(path, { method = 'GET', token, body } = {}) {
     } catch (_e) {
       error = `Request failed: ${res.status}`;
     }
-    throw new Error(error);
+    const requestError = new Error(error);
+    requestError.status = res.status;
+    throw requestError;
   }
 
   if (res.status === 204) return null;
@@ -42,7 +44,9 @@ export async function uploadFile(file, { token } = {}) {
     } catch (_e) {
       error = `Upload failed: ${res.status}`;
     }
-    throw new Error(error);
+    const requestError = new Error(error);
+    requestError.status = res.status;
+    throw requestError;
   }
 
   return res.json();

@@ -43,6 +43,7 @@ export default function ChatLayout({
   onSendMedia,
   mediaError,
   onStartDirect,
+  onDiscoverFriends,
   onCreateGroup,
   onChangeProfilePhoto,
   statusText,
@@ -96,6 +97,10 @@ export default function ChatLayout({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [localError, setLocalError] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
+  const [discoverScope, setDiscoverScope] = useState('online');
+  const [discoverQuery, setDiscoverQuery] = useState('');
+  const [discoverUsers, setDiscoverUsers] = useState([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const typingText = typingUsers?.length ? (typingUsers.length === 1 ? 'Typing…' : `${typingUsers.length} people are typing…`) : '';
 
@@ -161,6 +166,30 @@ export default function ChatLayout({
       setSidebarOpen(false);
     } catch (error) {
       setLocalError(error.message || 'Could not create this group.');
+    }
+  }
+
+  async function discoverFriends(scope = discoverScope) {
+    setDiscoverLoading(true);
+    setLocalError('');
+    setDiscoverScope(scope);
+    try {
+      setDiscoverUsers(await onDiscoverFriends?.(discoverQuery.trim(), scope) || []);
+    } catch (error) {
+      setLocalError(error.message || 'Could not find Chatika users.');
+    } finally {
+      setDiscoverLoading(false);
+    }
+  }
+
+  async function chatWithDiscoveredUser(username) {
+    setLocalError('');
+    try {
+      await onStartDirect(username);
+      setDiscoverUsers((users) => users.filter((user) => user.username !== username));
+      if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
+    } catch (error) {
+      setLocalError(error.message || 'Could not start this chat.');
     }
   }
 
@@ -250,6 +279,18 @@ export default function ChatLayout({
         <section className="new-chat-section">
           <div className="sidebar-label"><span>NEW CHAT</span><button type="button" onClick={() => setGroupOpen((value) => !value)}>New group</button></div>
           <form onSubmit={submitDirect} className="direct-form"><input name="username" placeholder="Add @username" required /><button type="submit">Chat</button></form>
+          <div className="discovery-controls">
+            <input value={discoverQuery} onChange={(event) => setDiscoverQuery(event.target.value)} placeholder="Search people" aria-label="Search Chatika users" />
+            <div>
+              <button className={discoverScope === 'online' ? 'active' : ''} type="button" onClick={() => discoverFriends('online')}>Online</button>
+              <button className={discoverScope === 'nearby' ? 'active' : ''} type="button" onClick={() => discoverFriends('nearby')}>Nearby</button>
+              <button type="button" onClick={() => discoverFriends(discoverScope)} aria-label="Refresh people">↻</button>
+            </div>
+          </div>
+          {discoverLoading && <p className="sidebar-empty">Finding people…</p>}
+          {!discoverLoading && discoverUsers.length > 0 && <div className="discovery-list">
+            {discoverUsers.map((user) => <button key={user.id} type="button" className="discovery-user" onClick={() => chatWithDiscoveredUser(user.username)}><Avatar user={user} /><span><strong>@{user.username}</strong><small>{user.is_online ? 'Online now' : user.is_nearby ? 'Nearby · ' + formatLastSeen(user.last_seen_at) : formatLastSeen(user.last_seen_at)}</small></span><b>Chat</b></button>)}
+          </div>}
           {groupOpen && <form onSubmit={submitGroup} className="group-form"><input name="name" placeholder="Group name" required /><input name="usernames" placeholder="@friend1, @friend2" required /><button type="submit">Create group</button></form>}
         </section>
 

@@ -1,15 +1,15 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateGroupInput, CreateRoomInput, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
+from app.schemas.chat import CreateGroupInput, CreateRoomInput, DiscoverUserOut, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -144,6 +144,52 @@ def _serialize_message(db: Session, message: Message, sender_username: str | Non
         **_reply_fields(db, message),
         'created_at': message.created_at.isoformat(),
     }
+
+
+@router.get('/discover', response_model=list[DiscoverUserOut])
+def discover_users(
+    q: str = Query(default='', max_length=40),
+    scope: str = Query(default='online', pattern='^(online|nearby|all)$'),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[DiscoverUserOut]:
+    country_code = current_user.last_country_code or current_user.signup_country_code
+    statement = select(User).where(
+        User.id != current_user.id,
+        User.is_approved.is_(True),
+    )
+    cleaned_query = q.strip().lstrip('@').lower()
+    if cleaned_query:
+        statement = statement.where(func.lower(User.username).contains(cleaned_query))
+    if scope == 'online':
+        statement = statement.where(User.is_online.is_(True))
+    elif scope == 'nearby':
+        if not country_code:
+            return []
+        statement = statement.where(
+            or_(
+                User.last_country_code == country_code,
+                User.signup_country_code == country_code,
+            )
+        )
+
+    users = db.scalars(
+        statement.order_by(User.is_online.desc(), func.lower(User.username)).limit(24)
+    ).all()
+    return [
+        DiscoverUserOut(
+            id=user.id,
+            username=user.username,
+            avatar_url=user.avatar_url,
+            is_online=user.is_online,
+            last_seen_at=user.last_seen_at,
+            is_nearby=bool(
+                country_code
+                and country_code in {user.last_country_code, user.signup_country_code}
+            ),
+        )
+        for user in users
+    ]
 
 
 @router.post('/rooms', response_model=RoomOut)

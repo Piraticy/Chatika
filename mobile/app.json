@@ -2,7 +2,7 @@
   "expo": {
     "name": "Chatika",
     "slug": "chatika",
-    "version": "0.4.10",
+    "version": "0.4.11",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {

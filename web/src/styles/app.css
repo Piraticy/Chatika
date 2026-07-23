@@ -497,6 +497,19 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 .direct-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
 .direct-form input, .group-form input { min-width: 0; padding: 10px 11px; font-size: .73rem; }
 .direct-form button, .group-form button { border: 0; border-radius: 10px; cursor: pointer; padding: 0 13px; color: var(--forest); background: var(--lime); font-size: .68rem; font-weight: 850; }
+.discovery-controls { display: grid; gap: 7px; padding: 8px; border: 1px solid #d8e7eb; border-radius: 12px; background: rgba(244,250,252,.82); }
+.discovery-controls > input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid #d8e7eb; border-radius: 0; padding: 7px 3px; background: transparent; font-size: .7rem; }
+.discovery-controls > div { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; }
+.discovery-controls button { border: 1px solid #cfe1e7; border-radius: 8px; cursor: pointer; padding: 6px 8px; color: #476171; background: #fff; font-size: .62rem; font-weight: 800; }
+.discovery-controls button.active { border-color: #74dce3; color: #075c63; background: #dffbfc; }
+.discovery-list { display: grid; max-height: 190px; gap: 5px; overflow: auto; }
+.discovery-user { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; border-radius: 11px; cursor: pointer; padding: 7px; text-align: left; color: var(--ink); background: #fff; }
+.discovery-user:hover { border-color: #9be4e8; background: #e8fafb; }
+.discovery-user > span { display: grid; min-width: 0; gap: 2px; }
+.discovery-user strong, .discovery-user small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-user strong { font-size: .7rem; }
+.discovery-user small { color: var(--muted); font-size: .58rem; }
+.discovery-user b { color: #078790; font-size: .62rem; }
 .group-form { display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 12px; padding: 9px; background: rgba(255,255,255,.5); }
 .group-form button { min-height: 38px; color: white; background: var(--forest); }
 .friend-section { min-height: 0; flex: 1 1 auto; }

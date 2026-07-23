@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.11 - 2026-07-23
+
+### Changed
+- Keep signed-in sessions across app restarts with safer refresh-token recovery.
+- Open to an unselected conversation dashboard instead of the last chat.
+- Add online-user search and privacy-safe country-level nearby discovery.
+
 ## v0.1.0 - 2026-05-21
 
 Initial public foundation release of Chatika.

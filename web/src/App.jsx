@@ -14,10 +14,6 @@ import { APP_VERSION } from './lib/version';
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
 
-function lastRoomKey(userId) {
-  return `chatika_last_room:${userId}`;
-}
-
 export default function App() {
   const initialAccessToken = localStorage.getItem(ACCESS_KEY) || '';
   const [mode, setMode] = useState('login');
@@ -27,6 +23,7 @@ export default function App() {
   const [token, setToken] = useState(initialAccessToken);
   const [refreshToken, setRefreshToken] = useState(localStorage.getItem(REFRESH_KEY) || '');
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionRetry, setSessionRetry] = useState(0);
 
   const [me, setMe] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -78,6 +75,7 @@ export default function App() {
   const callRetryTimersRef = useRef(new Map());
   const iceTransportPolicyRef = useRef('all');
   const readReceiptTimerRef = useRef(null);
+  const refreshPromiseRef = useRef(null);
 
   const isAuthed = Boolean(token && me);
 
@@ -97,12 +95,6 @@ export default function App() {
   }, [notificationStatus]);
 
   useEffect(() => {
-    if (me?.id && activeRoomId) {
-      localStorage.setItem(lastRoomKey(me.id), activeRoomId);
-    }
-  }, [me?.id, activeRoomId]);
-
-  useEffect(() => {
     // Warm the free-tier backend early to reduce first interactive wait on mobile.
     fetch(`${API_URL}/health`).catch(() => undefined);
   }, []);
@@ -113,12 +105,8 @@ export default function App() {
 
     const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
-    const savedRoomId = localStorage.getItem(lastRoomKey(meData.id));
-    setActiveRoomId((currentRoomId) => {
-      if (currentRoomId && roomData.some((room) => room.id === currentRoomId)) return currentRoomId;
-      if (savedRoomId && roomData.some((room) => room.id === savedRoomId)) return savedRoomId;
-      return roomData[0]?.id || '';
-    });
+    setActiveRoomId('');
+    setMessages([]);
 
     if (canUseAdmin(meData)) {
       const pending = await api('/admin/pending-users', { token: currentToken });
@@ -128,26 +116,50 @@ export default function App() {
 
   async function tryRefresh() {
     if (!refreshToken) return false;
-    try {
-      const pair = await api('/auth/refresh', {
-        method: 'POST',
-        body: { refresh_token: refreshToken }
-      });
-      setToken(pair.access_token);
-      setRefreshToken(pair.refresh_token);
-      await hydrateSession(pair.access_token);
-      return true;
-    } catch (_e) {
-      setToken('');
-      setRefreshToken('');
-      setMe(null);
-      return false;
-    }
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    refreshPromiseRef.current = (async () => {
+      try {
+        const pair = await api('/auth/refresh', {
+          method: 'POST',
+          body: { refresh_token: refreshToken }
+        });
+        setToken(pair.access_token);
+        setRefreshToken(pair.refresh_token);
+        await hydrateSession(pair.access_token);
+        return true;
+      } catch (refreshError) {
+        if (refreshError.status === 401 || refreshError.status === 403) {
+          setToken('');
+          setRefreshToken('');
+          setMe(null);
+          return false;
+        }
+        throw refreshError;
+      } finally {
+        refreshPromiseRef.current = null;
+      }
+    })();
+    return refreshPromiseRef.current;
   }
 
   useEffect(() => {
     let active = true;
+    let retryTimer;
     if (!token) {
+      if (refreshToken) {
+        setSessionReady(false);
+        tryRefresh()
+          .then((restored) => {
+            if (active && !restored) setSessionReady(true);
+          })
+          .catch(() => {
+            if (active) retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+          });
+        return () => {
+          active = false;
+          window.clearTimeout(retryTimer);
+        };
+      }
       const startupDelay = window.setTimeout(() => {
         if (active) setSessionReady(true);
       }, 180);
@@ -158,13 +170,32 @@ export default function App() {
     }
 
     setSessionReady(false);
-    hydrateSession(token)
-      .catch(() => tryRefresh())
-      .finally(() => {
+    (async () => {
+      try {
+        await hydrateSession(token);
         if (active) setSessionReady(true);
-      });
-    return () => { active = false; };
-  }, [token]);
+      } catch (sessionError) {
+        try {
+          const restored = sessionError.status === 401 || sessionError.status === 403
+            ? await tryRefresh()
+            : false;
+          if (active && restored) setSessionReady(true);
+          if (active && !restored && (sessionError.status === 401 || sessionError.status === 403)) {
+            setSessionReady(true);
+          }
+          if (active && !restored && sessionError.status !== 401 && sessionError.status !== 403) {
+            retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+          }
+        } catch (_refreshError) {
+          if (active) retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+      window.clearTimeout(retryTimer);
+    };
+  }, [token, refreshToken, sessionRetry]);
 
   useEffect(() => {
     if (!isAuthed) return undefined;
@@ -282,6 +313,12 @@ export default function App() {
     });
     setRooms((prev) => [room, ...prev.filter((item) => item.id !== room.id)]);
     setActiveRoomId(room.id);
+    return room;
+  }
+
+  async function discoverFriends(query, scope) {
+    const params = new URLSearchParams({ q: query || '', scope: scope || 'online' });
+    return api(`/chat/discover?${params.toString()}`, { token });
   }
 
   async function createGroup(name, usernames) {
@@ -978,6 +1015,7 @@ export default function App() {
         onSendMedia={sendMedia}
         mediaError={mediaError || messageError}
         onStartDirect={startDirectChat}
+        onDiscoverFriends={discoverFriends}
         onCreateGroup={createGroup}
         onChangeProfilePhoto={updateProfilePhoto}
         statusText={statusText}

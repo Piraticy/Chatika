@@ -27,10 +27,6 @@ const ACCESS_KEY = 'chatika_mobile_access';
 const REFRESH_KEY = 'chatika_mobile_refresh';
 const PUSH_PERMISSION_KEY = 'chatika_mobile_push_permission';
 
-function lastRoomKey(userId) {
-  return `chatika_mobile_last_room:${userId}`;
-}
-
 function readingPositionKey(userId, roomId) {
   return `chatika_mobile_reading_position:${userId}:${roomId}`;
 }
@@ -66,7 +62,9 @@ async function api(path, { method = 'GET', token, body } = {}) {
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(json.detail || `Request failed (${res.status})`);
+    const requestError = new Error(json.detail || `Request failed (${res.status})`);
+    requestError.status = res.status;
+    throw requestError;
   }
   return json;
 }
@@ -87,6 +85,7 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [storageReady, setStorageReady] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionRetry, setSessionRetry] = useState(0);
   const [feedbackForm, setFeedbackForm] = useState({ rating: 0, favorite_feature: 'messaging', improvement_area: 'reliability', comment: '' });
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
@@ -99,8 +98,12 @@ export default function App() {
   const [groupName, setGroupName] = useState('');
   const [groupUsers, setGroupUsers] = useState('');
   const [groupComposerOpen, setGroupComposerOpen] = useState(false);
+  const [discoverScope, setDiscoverScope] = useState('online');
+  const [discoverUsers, setDiscoverUsers] = useState([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
   const messageListRef = useRef(null);
   const restoredPositionsRef = useRef(new Set());
+  const refreshPromiseRef = useRef(null);
   const { width } = useWindowDimensions();
   const compact = width < 380;
 
@@ -142,12 +145,6 @@ export default function App() {
   }, [token, refreshToken]);
 
   useEffect(() => {
-    if (me?.id && activeRoomId) {
-      AsyncStorage.setItem(lastRoomKey(me.id), activeRoomId);
-    }
-  }, [me?.id, activeRoomId]);
-
-  useEffect(() => {
     if (__DEV__) return;
 
     Updates.checkForUpdateAsync()
@@ -165,46 +162,85 @@ export default function App() {
 
     const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
-    const savedRoomId = await AsyncStorage.getItem(lastRoomKey(meData.id));
-    setActiveRoomId((currentRoomId) => {
-      if (currentRoomId && roomData.some((room) => room.id === currentRoomId)) return currentRoomId;
-      if (savedRoomId && roomData.some((room) => room.id === savedRoomId)) return savedRoomId;
-      return roomData[0]?.id || '';
-    });
+    setActiveRoomId('');
+    setMessages([]);
   }
 
   async function tryRefresh() {
-    if (!refreshToken) return;
-    try {
-      const pair = await api('/auth/refresh', {
-        method: 'POST',
-        body: { refresh_token: refreshToken }
-      });
-      setToken(pair.access_token);
-      setRefreshToken(pair.refresh_token);
-      await hydrate(pair.access_token);
-    } catch (_e) {
-      setToken('');
-      setRefreshToken('');
-      setMe(null);
-    }
+    if (!refreshToken) return false;
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    refreshPromiseRef.current = (async () => {
+      try {
+        const pair = await api('/auth/refresh', {
+          method: 'POST',
+          body: { refresh_token: refreshToken }
+        });
+        setToken(pair.access_token);
+        setRefreshToken(pair.refresh_token);
+        await hydrate(pair.access_token);
+        return true;
+      } catch (refreshError) {
+        if (refreshError.status === 401 || refreshError.status === 403) {
+          setToken('');
+          setRefreshToken('');
+          setMe(null);
+          return false;
+        }
+        throw refreshError;
+      } finally {
+        refreshPromiseRef.current = null;
+      }
+    })();
+    return refreshPromiseRef.current;
   }
 
   useEffect(() => {
     let active = true;
+    let retryTimer;
     if (!storageReady) return () => { active = false; };
     if (!token) {
+      if (refreshToken) {
+        setSessionReady(false);
+        tryRefresh()
+          .then((restored) => {
+            if (active && !restored) setSessionReady(true);
+          })
+          .catch(() => {
+            if (active) retryTimer = setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+          });
+        return () => {
+          active = false;
+          clearTimeout(retryTimer);
+        };
+      }
       setSessionReady(true);
       return () => { active = false; };
     }
     setSessionReady(false);
-    hydrate(token)
-      .catch(() => tryRefresh())
-      .finally(() => {
+    (async () => {
+      try {
+        await hydrate(token);
         if (active) setSessionReady(true);
-      });
-    return () => { active = false; };
-  }, [storageReady, token]);
+      } catch (sessionError) {
+        try {
+          const restored = sessionError.status === 401 || sessionError.status === 403
+            ? await tryRefresh()
+            : false;
+          if (active && (restored || sessionError.status === 401 || sessionError.status === 403)) {
+            setSessionReady(true);
+          } else if (active) {
+            retryTimer = setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+          }
+        } catch {
+          if (active) retryTimer = setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+      clearTimeout(retryTimer);
+    };
+  }, [storageReady, token, refreshToken, sessionRetry]);
 
   useEffect(() => {
     if (!token || !Device.isDevice) return;
@@ -286,8 +322,8 @@ export default function App() {
     }
   }
 
-  async function startDirectChat() {
-    const username = contactUsername.trim();
+  async function startDirectChat(selectedUsername = '') {
+    const username = String(selectedUsername || contactUsername).trim();
     if (!username) return;
     try {
       const room = await api('/chat/direct', {
@@ -298,8 +334,23 @@ export default function App() {
       setRooms((prev) => [room, ...prev]);
       setActiveRoomId(room.id);
       setContactUsername('');
+      setDiscoverUsers((users) => users.filter((user) => user.username !== username));
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function discoverFriends(scope) {
+    setDiscoverScope(scope);
+    setDiscoverLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ q: contactUsername.trim(), scope });
+      setDiscoverUsers(await api(`/chat/discover?${params.toString()}`, { token }));
+    } catch (discoverError) {
+      setError(discoverError.message);
+    } finally {
+      setDiscoverLoading(false);
     }
   }
 
@@ -359,7 +410,7 @@ export default function App() {
         body: {
           ...feedbackForm,
           comment: feedbackForm.comment.trim() || null,
-          app_version: Constants.expoConfig?.version || '0.4.10',
+          app_version: Constants.expoConfig?.version || '0.4.11',
           platform: Platform.OS
         }
       });
@@ -373,8 +424,8 @@ export default function App() {
 
   const activeRoom = useMemo(() => rooms.find((r) => r.id === activeRoomId), [rooms, activeRoomId]);
   const activeOther = useMemo(
-    () => activeRoom?.participants?.find((participant) => participant.id !== me.id),
-    [activeRoom, me.id]
+    () => activeRoom?.participants?.find((participant) => participant.id !== me?.id),
+    [activeRoom, me?.id]
   );
   const activePresenceText = activeOther
     ? (activeOther.is_online ? `@${activeOther.username} · Online now` : `@${activeOther.username} · ${formatLastSeen(activeOther.last_seen_at)}`)
@@ -442,8 +493,14 @@ export default function App() {
 
       <View style={styles.directChatRow}>
         <TextInput style={styles.directChatInput} value={contactUsername} placeholder="Add @username" placeholderTextColor="#8ea0be" autoCapitalize="none" onChangeText={setContactUsername} />
-        <TouchableOpacity onPress={startDirectChat} style={styles.directChatButton}><Text style={styles.directChatButtonText}>Chat</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => startDirectChat()} style={styles.directChatButton}><Text style={styles.directChatButtonText}>Chat</Text></TouchableOpacity>
       </View>
+      <View style={styles.discoveryRow}>
+        <TouchableOpacity onPress={() => discoverFriends('online')} style={[styles.discoveryButton, discoverScope === 'online' && styles.discoveryButtonActive]}><Text style={styles.discoveryButtonText}>Online</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => discoverFriends('nearby')} style={[styles.discoveryButton, discoverScope === 'nearby' && styles.discoveryButtonActive]}><Text style={styles.discoveryButtonText}>Nearby</Text></TouchableOpacity>
+        {discoverLoading ? <Text style={styles.discoveryLoading}>Finding…</Text> : null}
+      </View>
+      {discoverUsers.length ? <FlatList horizontal data={discoverUsers} keyExtractor={(item) => item.id} style={styles.discoveryList} renderItem={({ item }) => <TouchableOpacity onPress={() => startDirectChat(item.username)} style={styles.discoveryPerson}><Text style={styles.discoveryPersonName}>@{item.username}</Text><Text style={styles.discoveryPersonStatus}>{item.is_online ? 'Online now' : item.is_nearby ? 'Nearby' : formatLastSeen(item.last_seen_at)}</Text></TouchableOpacity>} /> : null}
       {groupComposerOpen && <View style={styles.groupComposer}><TextInput style={styles.directChatInput} value={groupName} placeholder="Group name" placeholderTextColor="#8ea0be" onChangeText={setGroupName} /><TextInput style={styles.directChatInput} value={groupUsers} placeholder="@friend1, @friend2" placeholderTextColor="#8ea0be" autoCapitalize="none" onChangeText={setGroupUsers} /><TouchableOpacity onPress={createGroup} style={styles.directChatButton}><Text style={styles.directChatButtonText}>Create group</Text></TouchableOpacity></View>}
 
       <FlatList
@@ -514,7 +571,7 @@ export default function App() {
           </ScrollView>
         </View>
       </Modal>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.10</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.11</Text>
     </SafeAreaView>
   );
 }
@@ -625,6 +682,15 @@ const styles = StyleSheet.create({
   directChatInput: { flex: 1, borderWidth: 1, borderColor: '#31455b', borderRadius: 10, color: '#f7fbff', paddingHorizontal: 11, paddingVertical: 9 },
   directChatButton: { borderRadius: 10, backgroundColor: '#00f0ff', justifyContent: 'center', paddingHorizontal: 13 },
   directChatButtonText: { color: '#0a1221', fontWeight: '800', fontSize: 12 },
+  discoveryRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
+  discoveryButton: { borderWidth: 1, borderColor: '#31455b', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  discoveryButtonActive: { borderColor: '#00f0ff', backgroundColor: '#11354a' },
+  discoveryButtonText: { color: '#e9f0ff', fontSize: 11, fontWeight: '800' },
+  discoveryLoading: { color: '#9cb1bd', fontSize: 11 },
+  discoveryList: { maxHeight: 58, marginBottom: 8 },
+  discoveryPerson: { minWidth: 116, borderWidth: 1, borderColor: '#31455b', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8, marginRight: 7, backgroundColor: '#122038' },
+  discoveryPersonName: { color: '#f7fbff', fontWeight: '800', fontSize: 12 },
+  discoveryPersonStatus: { color: '#6dffb0', fontSize: 10, marginTop: 2 },
   groupComposer: { gap: 7, marginBottom: 10 },
   roomPill: {
     backgroundColor: '#122038',
