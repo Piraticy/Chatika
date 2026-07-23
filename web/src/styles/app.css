@@ -692,6 +692,14 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 .compact-call-controls .call-control > span { font-size: .55rem; }
 .compact-call-controls .end-control { border-color: #d95d4c; background: #d95d4c; }
 .compact-call-controls .accept-control { border-color: #16a66b; background: #16a66b; }
+.compact-call-controls .speaker-control.control-on { border-color: #32cfa1; color: #075c4d; background: linear-gradient(145deg, #ecfff7, #cdf9ea); }
+.call-status-chip.ringing { border-color: #84dfc5; color: #08766b; background: #effff8; }
+.call-status-chip.ringing .status-dot { animation: chatika-ring-pulse 1s ease-in-out infinite; }
+.remote-call-audio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+@keyframes chatika-ring-pulse {
+  50% { box-shadow: 0 0 0 6px rgba(47, 207, 161, .2); transform: scale(.8); }
+}
 
 @media (max-width: 720px) {
   .emoji-picker { left: 0; grid-template-columns: repeat(5, minmax(34px, 1fr)); width: min(286px, calc(100vw - 20px)); max-height: min(250px, 38dvh); }

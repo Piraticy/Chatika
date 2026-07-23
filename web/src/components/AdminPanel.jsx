@@ -73,7 +73,7 @@ export default function AdminPanel({ open, users = [], feedback = [], loading, e
                 <div><strong>@{item.username}</strong><span>{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</span></div>
                 <small>{feedbackLabel(item.favorite_feature)} · Improve {feedbackLabel(item.improvement_area)}</small>
                 {item.comment && <p>{item.comment}</p>}
-                <time>{item.created_at ? formatDate(item.created_at) : ''} · {item.platform || 'unknown'} · v{item.app_version || '—'}</time>
+                <time>{item.created_at ? formatDate(item.created_at) : ''} · {item.platform || 'unknown'} · {item.app_version || 'beta'}</time>
               </article>
             ))}
             {!feedback.length && <small>No beta responses yet.</small>}

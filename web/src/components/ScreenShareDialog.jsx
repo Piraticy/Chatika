@@ -3,6 +3,8 @@ import React, { useEffect, useRef } from 'react';
 export default function ScreenShareDialog({
   open,
   supported,
+  isMobile,
+  unavailableMessage,
   active,
   localStream,
   remoteStreams,
@@ -36,9 +38,9 @@ export default function ScreenShareDialog({
         </div>
 
         {!supported && (
-          <div className="notice-card warning">
-            <strong>Screen capture is not available here.</strong>
-            <span>Use a current HTTPS desktop browser. Android and iOS browsers can join calls and watch shared screens; capturing a mobile screen requires a native app wrapper with OS capture permission.</span>
+          <div className="notice-card warning share-availability-card">
+            <strong>{isMobile ? 'Screen viewing is ready on this device.' : 'Screen capture is unavailable in this browser.'}</strong>
+            <span>{unavailableMessage}</span>
           </div>
         )}
 
@@ -74,7 +76,7 @@ export default function ScreenShareDialog({
           {active ? (
             <button type="button" className="danger-button premium-dialog-button" onClick={onStop}><ShareIcon name="stop" />Stop sharing</button>
           ) : (
-            <button type="button" className="primary-button premium-dialog-button" onClick={onStart} disabled={!supported}><ShareIcon name="screen" />Choose a screen</button>
+            <button type="button" className="primary-button premium-dialog-button" onClick={onStart} disabled={!supported}><ShareIcon name="screen" />{supported ? 'Choose a screen' : isMobile ? 'View-only on this browser' : 'Screen sharing unavailable'}</button>
           )}
           <button type="button" className="quiet-button premium-dialog-button" onClick={onClose}>Close</button>
         </div>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="1800" viewBox="0 0 1080 1800">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7fbff"/><stop offset=".52" stop-color="#fffdf8"/><stop offset="1" stop-color="#fff1ee"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#00c9dc"/><stop offset="1" stop-color="#ff7659"/></linearGradient>
+    <linearGradient id="step" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8fbfc"/><stop offset="1" stop-color="#f5fff8"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0a1221" flood-opacity=".12"/></filter>
+    <style>
+      .ink{fill:#0a1221;font-family:Arial,sans-serif}.muted{fill:#617b89;font-family:Arial,sans-serif}.teal{fill:#078d98;font-family:Arial,sans-serif}.white{fill:#fff;font-family:Arial,sans-serif}.label{font-size:20px;font-weight:800;letter-spacing:3px}.step-title{font-size:24px;font-weight:800}.step-copy{font-size:18px}.feature{font-size:18px;font-weight:800}.feature-copy{font-size:16px}
+    </style>
+  </defs>
+  <rect width="1080" height="1800" fill="url(#bg)"/>
+  <circle cx="-40" cy="250" r="270" fill="#c8f6f8" opacity=".38"/><circle cx="1120" cy="1450" r="300" fill="#ffd8ce" opacity=".34"/>
+  <path d="M-20 210C170 70 300 80 430-10M-20 245C170 105 300 115 450 10M1100 1590C900 1720 790 1690 650 1790" fill="none" stroke="#4ed9e1" stroke-width="3" opacity=".22"/>
+
+  <g transform="translate(72 62)"><rect width="76" height="76" rx="22" fill="#0a1221"/><path d="M17 27c0-8 6-14 14-14h25c8 0 14 6 14 14v15c0 8-6 14-14 14H40L24 68c-4 3-8 0-8-5V48c-1-2-2-4-2-6V27z" fill="url(#accent)"/><circle cx="36" cy="35" r="3.5" fill="#08111f"/><circle cx="45" cy="35" r="3.5" fill="#08111f"/><circle cx="54" cy="35" r="3.5" fill="#08111f"/><path d="M54 46l9 8" stroke="#00e4ef" stroke-width="4" stroke-linecap="round"/></g>
+  <text x="166" y="94" class="ink" font-size="31" font-weight="800" letter-spacing="4">CHATIKA</text>
+  <rect x="738" y="66" width="270" height="58" rx="29" fill="#0a1221" filter="url(#shadow)"/><circle cx="770" cy="95" r="9" fill="#6dffb0"/><text x="795" y="104" class="white" font-size="21" font-weight="800">PUBLIC BETA</text>
+
+  <text x="72" y="197" class="label teal">ENGLISH  •  KISWAHILI</text>
+  <text x="72" y="252" class="ink" font-size="52" font-weight="800">Join Chatika</text>
+  <text x="72" y="308" class="ink" font-size="42" font-weight="800">Jiunge na Chatika</text>
+  <text x="72" y="352" class="muted" font-size="23">Private chat, calls, media and collaboration across your devices.</text>
+  <text x="72" y="386" class="muted" font-size="23">Ujumbe binafsi, simu, media na ushirikiano kwenye vifaa vyako vyote.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="68" y="416" width="944" height="510" rx="34" fill="#0a1728"/>
+    <circle cx="520" cy="655" r="220" fill="#00c9dc" opacity=".10"/><circle cx="760" cy="560" r="160" fill="#ff7659" opacity=".08"/>
+    <text x="540" y="466" class="white" font-size="18" font-weight="800" text-anchor="middle" letter-spacing="3">ONE CHAT  •  EVERY DEVICE</text>
+    <path d="M160 826C350 766 726 766 924 826" fill="none" stroke="#5b9eac" stroke-width="3" opacity=".5"/>
+    <g>
+      <rect x="607" y="516" width="302" height="210" rx="20" fill="#f8fcff"/><rect x="621" y="530" width="274" height="176" rx="12" fill="#0d1d33"/>
+      <rect x="641" y="552" width="234" height="25" rx="12" fill="#173a55"/><circle cx="659" cy="564" r="7" fill="#00d6e5"/><rect x="641" y="595" width="118" height="45" rx="13" fill="#00bace"/><rect x="772" y="595" width="103" height="45" rx="13" fill="#8ff0c5"/><rect x="641" y="654" width="160" height="28" rx="14" fill="#244863"/>
+      <path d="M575 736h366l-31 26H606z" fill="#f8fcff"/><path d="M720 746h76l8 8h-92z" fill="#00d7e5"/>
+    </g>
+    <g>
+      <rect x="388" y="490" width="190" height="292" rx="28" fill="#f8fcff"/><rect x="401" y="510" width="164" height="248" rx="17" fill="#0d1d33"/><rect x="421" y="534" width="124" height="23" rx="11" fill="#173a55"/><circle cx="438" cy="545" r="7" fill="#ff7659"/><rect x="421" y="579" width="104" height="39" rx="13" fill="#8ff0c5"/><rect x="441" y="636" width="104" height="39" rx="13" fill="#21465f"/><rect x="421" y="695" width="80" height="18" rx="9" fill="#00d6e5"/><circle cx="483" cy="770" r="4" fill="#8aa5b4"/>
+    </g>
+    <g>
+      <rect x="214" y="554" width="122" height="244" rx="27" fill="#f8fcff"/><rect x="225" y="578" width="100" height="194" rx="16" fill="#0d1d33"/><rect x="241" y="603" width="68" height="16" rx="8" fill="#173a55"/><rect x="241" y="641" width="64" height="44" rx="14" fill="#00c9dc"/><rect x="257" y="701" width="52" height="34" rx="13" fill="#8ff0c5"/><circle cx="275" cy="782" r="4" fill="#8aa5b4"/><rect x="253" y="563" width="44" height="5" rx="2.5" fill="#8aa5b4"/>
+    </g>
+    <g class="white" font-size="16" font-weight="800" letter-spacing="2"><text x="244" y="836">PHONE</text><text x="438" y="836">TABLET</text><text x="701" y="836">DESKTOP</text></g>
+    <rect x="328" y="860" width="424" height="42" rx="21" fill="#f8fcff" opacity=".98"/><text x="540" y="888" class="ink" font-size="18" font-weight="800" text-anchor="middle" letter-spacing="1">ANDROID  •  iOS  •  DESKTOP</text>
+  </g>
+
+  <text x="72" y="978" class="label teal">HOW TO JOIN  •  JINSI YA KUJIUNGA</text>
+  <g transform="translate(72 1004)">
+    <g><rect width="936" height="126" rx="22" fill="url(#step)" stroke="#ccebed" stroke-width="2"/><circle cx="56" cy="63" r="29" fill="#0a1221"/><text x="47" y="73" class="white" font-size="25" font-weight="800">1</text><path d="M486 20v86" stroke="#ccebed" stroke-width="2"/><text x="108" y="48" class="ink" font-size="21" font-weight="800">Open chatika.onrender.com</text><text x="108" y="79" class="muted" font-size="18">Open on any device</text><text x="520" y="48" class="ink" font-size="21" font-weight="800">Fungua chatika.onrender.com</text><text x="520" y="79" class="muted" font-size="18">Fungua kwenye kifaa chochote</text></g>
+    <g transform="translate(0 142)"><rect width="936" height="126" rx="22" fill="url(#step)" stroke="#ccebed" stroke-width="2"/><circle cx="56" cy="63" r="29" fill="#0a1221"/><text x="47" y="73" class="white" font-size="25" font-weight="800">2</text><path d="M486 20v86" stroke="#ccebed" stroke-width="2"/><text x="108" y="48" class="ink" font-size="21" font-weight="800">Choose Register</text><text x="108" y="79" class="muted" font-size="18">Create a new account</text><text x="520" y="48" class="ink" font-size="21" font-weight="800">Chagua Register</text><text x="520" y="79" class="muted" font-size="18">Jisajili kwa akaunti mpya</text></g>
+    <g transform="translate(0 284)"><rect width="936" height="126" rx="22" fill="url(#step)" stroke="#ccebed" stroke-width="2"/><circle cx="56" cy="63" r="29" fill="#0a1221"/><text x="47" y="73" class="white" font-size="25" font-weight="800">3</text><path d="M486 20v86" stroke="#ccebed" stroke-width="2"/><text x="108" y="48" class="ink" font-size="21" font-weight="800">Set username &amp; photo</text><text x="108" y="79" class="muted" font-size="18">Add password and profile picture</text><text x="520" y="48" class="ink" font-size="21" font-weight="800">Weka jina na picha</text><text x="520" y="79" class="muted" font-size="18">Ongeza nenosiri na picha ya wasifu</text></g>
+    <g transform="translate(0 426)"><rect width="936" height="126" rx="22" fill="url(#step)" stroke="#ccebed" stroke-width="2"/><circle cx="56" cy="63" r="29" fill="#0a1221"/><text x="47" y="73" class="white" font-size="25" font-weight="800">4</text><path d="M486 20v86" stroke="#ccebed" stroke-width="2"/><text x="108" y="48" class="ink" font-size="21" font-weight="800">Find a friend and chat</text><text x="108" y="79" class="muted" font-size="18">Search with their username</text><text x="520" y="48" class="ink" font-size="21" font-weight="800">Tafuta rafiki, anza chat</text><text x="520" y="79" class="muted" font-size="18">Tumia jina la mtumiaji</text></g>
+  </g>
+
+  <text x="72" y="1630" class="label teal">FEATURES  •  VIPENGELE</text>
+  <g transform="translate(72 1654)"><rect width="216" height="76" rx="18" fill="#e7f8fa"/><text x="22" y="32" class="feature ink">Chat &amp; groups</text><text x="22" y="57" class="feature-copy muted">Chat na makundi</text></g>
+  <g transform="translate(304 1654)"><rect width="216" height="76" rx="18" fill="#e9fff3"/><text x="22" y="32" class="feature ink">Audio &amp; video</text><text x="22" y="57" class="feature-copy muted">Sauti na video</text></g>
+  <g transform="translate(536 1654)"><rect width="216" height="76" rx="18" fill="#fff0ec"/><text x="22" y="32" class="feature ink">Share media</text><text x="22" y="57" class="feature-copy muted">Shiriki media</text></g>
+  <g transform="translate(768 1654)"><rect width="240" height="76" rx="18" fill="#edf5ff"/><text x="22" y="32" class="feature ink">Screen sharing</text><text x="22" y="57" class="feature-copy muted">Shiriki skrini</text></g>
+  <text x="72" y="1765" class="muted" font-size="20">Web • Android • iOS • Windows • macOS • Linux   |   Enter details once / Ingiza mara moja</text>
+</svg>

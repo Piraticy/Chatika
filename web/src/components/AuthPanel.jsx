@@ -59,7 +59,7 @@ export default function AuthPanel({ mode, onModeChange, onSubmit, loading }) {
         </button>
       </form>
       <div className="auth-footer"><span className="status-dot" /> No tracking. No noisy notifications. Just your conversations.</div>
-      <footer className="app-credit">{APP_CREDIT} · v{APP_VERSION}</footer>
+      <footer className="app-credit">{APP_CREDIT} · {APP_VERSION}</footer>
     </section>
   );
 }

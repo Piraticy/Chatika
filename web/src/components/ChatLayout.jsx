@@ -320,7 +320,7 @@ export default function ChatLayout({
 
         {isAdmin && <section className="admin-box"><div className="sidebar-label"><span>ADMIN</span><span>{pendingUsers.length}</span></div>{pendingUsers.map((user) => <div className="pending-user" key={user.id}><span>@{user.username}</span><button onClick={() => onApprove(user.id)}>Approve</button></div>)}<button className="admin-open-button" type="button" onClick={onOpenAdmin}>Open admin control</button></section>}
         {localError && <p className="sidebar-error">{localError}</p>}
-        <div className="sidebar-foot"><span>{APP_CREDIT} · v{APP_VERSION}</span><button type="button" onClick={onLogout}>Log out</button></div>
+        <div className="sidebar-foot"><span>{APP_CREDIT} · {APP_VERSION}</span><button type="button" onClick={onLogout}>Log out</button></div>
       </aside>
 
       <main className="thread glass">

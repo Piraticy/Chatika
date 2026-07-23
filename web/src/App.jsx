@@ -9,10 +9,22 @@ import ScreenShareDialog from './components/ScreenShareDialog';
 import { api, API_URL, uploadFile } from './lib/api';
 import { createSocket } from './lib/socket';
 import { enableWebPush } from './lib/push';
+import { startChatikaRingtone, stopChatikaRingtone } from './lib/callTone';
 import { APP_VERSION } from './lib/version';
 
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
+
+function getScreenShareAvailability() {
+  const mobile = typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  const secure = typeof window !== 'undefined' && window.isSecureContext;
+  const supported = Boolean(secure && navigator.mediaDevices?.getDisplayMedia && window.RTCPeerConnection);
+
+  if (supported) return { supported: true, mobile, message: '' };
+  if (!secure) return { supported: false, mobile, message: 'Screen sharing needs a secure HTTPS connection.' };
+  if (mobile) return { supported: false, mobile, message: 'This browser can view shared screens, but does not provide device screen capture. Try the latest Chrome or Edge, or share from desktop.' };
+  return { supported: false, mobile, message: 'This browser does not provide screen capture. Try the latest Chrome, Edge, or Firefox over HTTPS.' };
+}
 
 export default function App() {
   const initialAccessToken = localStorage.getItem(ACCESS_KEY) || '';
@@ -53,6 +65,7 @@ export default function App() {
   const [callConnectionStatus, setCallConnectionStatus] = useState('Ready');
   const [callMuted, setCallMuted] = useState(false);
   const [callCameraOff, setCallCameraOff] = useState(false);
+  const [callSpeakerOn, setCallSpeakerOn] = useState(true);
   const [notificationStatus, setNotificationStatus] = useState(localStorage.getItem('chatika_notification_status') || 'idle');
   const [mediaError, setMediaError] = useState('');
   const [messageError, setMessageError] = useState('');
@@ -622,7 +635,10 @@ export default function App() {
       setRemoteCallStreams((prev) => ({ ...prev, [userId]: remoteStream }));
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'connected') setCallConnectionStatus('Live');
+      if (peer.connectionState === 'connected') {
+        stopChatikaRingtone();
+        setCallConnectionStatus('Live');
+      }
       if (peer.connectionState === 'disconnected') {
         setCallConnectionStatus('Reconnecting');
         scheduleCallRetry(userId, kind);
@@ -660,6 +676,7 @@ export default function App() {
     }
 
     try {
+      startChatikaRingtone('outgoing');
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: kind === 'video' ? {
@@ -674,7 +691,8 @@ export default function App() {
       setCallKind(kind);
       setCallMuted(false);
       setCallCameraOff(false);
-      setCallConnectionStatus('Connecting');
+      setCallSpeakerOn(true);
+      setCallConnectionStatus('Ringing');
       setCallActive(true);
       setCallDialogOpen(true);
 
@@ -699,6 +717,7 @@ export default function App() {
     const call = incomingCall;
     if (!call) return;
     setCallError('');
+    stopChatikaRingtone();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -709,6 +728,7 @@ export default function App() {
       setCallKind(call.kind);
       setCallMuted(false);
       setCallCameraOff(false);
+      setCallSpeakerOn(true);
       setCallConnectionStatus('Connecting');
       setCallActive(true);
       setCallDialogOpen(true);
@@ -728,11 +748,13 @@ export default function App() {
 
   function rejectIncomingCall() {
     if (incomingCall?.fromUserId) sendCallSignal(incomingCall.fromUserId, { type: 'call-hangup' }, incomingCall.roomId);
+    stopChatikaRingtone();
     setIncomingCall(null);
     setCallDialogOpen(false);
   }
 
   function stopCall(notify = true) {
+    stopChatikaRingtone();
     if (notify) {
       callPeerConnectionsRef.current.forEach((_peer, userId) => sendCallSignal(userId, { type: 'call-hangup' }, callPeerRoomIdsRef.current.get(userId)));
     }
@@ -753,6 +775,7 @@ export default function App() {
     setCallConnectionStatus('Ready');
     setCallMuted(false);
     setCallCameraOff(false);
+    setCallSpeakerOn(true);
   }
 
   async function renegotiateCallPeer(userId, kind) {
@@ -788,6 +811,10 @@ export default function App() {
     setCallCameraOff(next);
   }
 
+  function toggleCallSpeaker() {
+    setCallSpeakerOn((enabled) => !enabled);
+  }
+
   async function enableNotifications() {
     setNotificationStatus('loading');
     try {
@@ -804,12 +831,9 @@ export default function App() {
 
   async function startShare() {
     setShareError('');
-    if (!window.isSecureContext) {
-      setShareError('Screen sharing requires a secure HTTPS connection. Open the hosted Chatika address, not an insecure HTTP address.');
-      return;
-    }
-    if (!navigator.mediaDevices?.getDisplayMedia) {
-      setShareError('This browser does not support screen capture. Use a current desktop browser, or use an installed native app for mobile screen capture.');
+    const availability = getScreenShareAvailability();
+    if (!availability.supported) {
+      setShareError(availability.message);
       return;
     }
 
@@ -911,6 +935,7 @@ export default function App() {
         return;
       }
       setIncomingCall({ fromUserId: userId, roomId, kind: data.kind === 'video' ? 'video' : 'audio', description: data.description, username: evt.from_username || userId });
+      startChatikaRingtone('incoming');
       setCallDialogOpen(true);
       return;
     }
@@ -922,6 +947,7 @@ export default function App() {
       const pending = callPendingIceRef.current.get(userId) || [];
       await Promise.all(pending.map((candidate) => peer.addIceCandidate(candidate)));
       callPendingIceRef.current.delete(userId);
+      stopChatikaRingtone();
       setCallConnectionStatus('Connecting');
     } else if (data.type === 'call-ice') {
       const peer = callPeerConnectionsRef.current.get(userId);
@@ -933,7 +959,10 @@ export default function App() {
       else callPendingIceRef.current.set(userId, [...(callPendingIceRef.current.get(userId) || []), data.candidate]);
     } else if (data.type === 'call-hangup') {
       const peer = callPeerConnectionsRef.current.get(userId);
-      if (!peer) return;
+      if (!peer) {
+        if (!callPeerConnectionsRef.current.size) stopCall(false);
+        return;
+      }
       peer.close();
       callPeerConnectionsRef.current.delete(userId);
       setRemoteCallStreams((prev) => {
@@ -1000,7 +1029,7 @@ export default function App() {
     );
   }
 
-  const screenShareSupported = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia && window.RTCPeerConnection);
+  const screenShareAvailability = getScreenShareAvailability();
 
   return (
     <>
@@ -1048,7 +1077,9 @@ export default function App() {
       />
       <ScreenShareDialog
         open={shareDialogOpen}
-        supported={screenShareSupported}
+        supported={screenShareAvailability.supported}
+        isMobile={screenShareAvailability.mobile}
+        unavailableMessage={screenShareAvailability.message}
         active={shareActive}
         localStream={localShareStream}
         remoteStreams={remoteStreams}
@@ -1074,6 +1105,7 @@ export default function App() {
         participantProfiles={callParticipantProfiles}
         muted={callMuted}
         cameraOff={callCameraOff}
+        speakerOn={callSpeakerOn}
         onStart={startCall}
         onAccept={acceptIncomingCall}
         onReject={rejectIncomingCall}
@@ -1083,6 +1115,7 @@ export default function App() {
         }}
         onToggleMute={toggleCallMute}
         onToggleCamera={toggleCallCamera}
+        onToggleSpeaker={toggleCallSpeaker}
         onClose={() => setCallDialogOpen(false)}
       />
       <AdminPanel

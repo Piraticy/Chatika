@@ -22,13 +22,15 @@ export default function CallDialog({
   participantProfiles,
   muted,
   cameraOff,
+  speakerOn,
   onStart,
   onAccept,
   onReject,
   onHangup,
   onClose,
   onToggleMute,
-  onToggleCamera
+  onToggleCamera,
+  onToggleSpeaker
 }) {
   const localVideoRef = useRef(null);
   const [elapsed, setElapsed] = useState(0);
@@ -74,17 +76,21 @@ export default function CallDialog({
 
         <div className="portrait-call-stage">
           {isVideo && remoteEntries.map(([userId, stream]) => (
-            <RemoteCallMedia key={userId} userId={userId} username={participantNames?.[userId]} profile={participantProfiles?.[userId]} stream={stream} video />
+            <RemoteCallMedia key={userId} userId={userId} username={participantNames?.[userId]} profile={participantProfiles?.[userId]} stream={stream} video speakerOn={speakerOn} />
           ))}
 
           {(!isVideo || !remoteEntries.length) && (
             <div className="call-contact-card">
               <CallAvatar profile={displayProfile} large />
               <strong>{displayName}</strong>
-              <span>{incoming ? `Incoming ${isVideo ? 'video' : 'audio'} call` : status === 'Live' ? formatDuration(elapsed) : 'Calling…'}</span>
+              <span>{incoming ? `Incoming ${isVideo ? 'video' : 'audio'} call` : status === 'Live' ? formatDuration(elapsed) : status === 'Ringing' ? 'Ringing…' : 'Connecting…'}</span>
               {status !== 'Live' && <div className="incoming-wave" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
             </div>
           )}
+
+          {!isVideo && remoteEntries.map(([userId, stream]) => (
+            <RemoteCallMedia key={userId} userId={userId} username={participantNames?.[userId]} profile={participantProfiles?.[userId]} stream={stream} speakerOn={speakerOn} />
+          ))}
 
           {isVideo && localStream && <video ref={localVideoRef} className={`call-video local-call-video ${cameraOff ? 'is-hidden' : ''}`} autoPlay muted playsInline />}
         </div>
@@ -98,6 +104,7 @@ export default function CallDialog({
           ) : active ? (
             <>
               <button type="button" className={`call-control ${muted ? 'control-on' : ''}`} onClick={onToggleMute}><CallIcon name={muted ? 'micOff' : 'mic'} /><span>{muted ? 'Unmute' : 'Mute'}</span></button>
+              <button type="button" className={`call-control speaker-control ${speakerOn ? 'control-on' : ''}`} onClick={onToggleSpeaker}><CallIcon name={speakerOn ? 'speaker' : 'speakerOff'} /><span>{speakerOn ? 'Speaker' : 'Quiet'}</span></button>
               {isVideo && <button type="button" className={`call-control ${cameraOff ? 'control-on' : ''}`} onClick={onToggleCamera}><CallIcon name={cameraOff ? 'videoOff' : 'video'} /><span>{cameraOff ? 'Camera on' : 'Camera off'}</span></button>}
               <button type="button" className="call-control end-control" onClick={onHangup}><CallIcon name="phoneOff" /><span>End</span></button>
             </>
@@ -118,11 +125,17 @@ function CallAvatar({ profile, large = false }) {
   return <div className={`call-avatar ${large ? 'call-avatar-large' : ''}`}>{(profile?.username || '?').slice(0, 1).toUpperCase()}</div>;
 }
 
-function RemoteCallMedia({ userId, username, profile, stream, video }) {
+function RemoteCallMedia({ userId, username, profile, stream, video, speakerOn }) {
   const mediaRef = useRef(null);
-  useEffect(() => { if (mediaRef.current) mediaRef.current.srcObject = stream; }, [stream]);
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    media.srcObject = stream;
+    media.volume = speakerOn ? 1 : 0.35;
+    if (speakerOn && typeof media.setSinkId === 'function') media.setSinkId('default').catch(() => undefined);
+  }, [speakerOn, stream]);
   if (video) return <div className="remote-call-media portrait-remote-video"><video ref={mediaRef} className="call-video" autoPlay playsInline /><span>@{username || userId.slice(0, 6)}</span></div>;
-  return <div className="audio-participant"><CallAvatar profile={profile || { username: username || userId }} /><strong>@{username || userId.slice(0, 8)}</strong><audio ref={mediaRef} autoPlay playsInline /></div>;
+  return <audio ref={mediaRef} className="remote-call-audio" autoPlay playsInline />;
 }
 
 function CallIcon({ name }) {
@@ -131,5 +144,6 @@ function CallIcon({ name }) {
   if (name === 'phoneOff') return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M5 15.5c4.7-3.3 9.3-3.3 14 0M7.5 14l-1 4M16.5 14l1 4" /></svg>;
   if (name === 'video' || name === 'videoOff') return <svg viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="3" y="6" width="12" height="12" rx="3" /><path {...common} d="m15 10 5-3v10l-5-3" />{name === 'videoOff' && <path {...common} d="M4 4 20 20" />}</svg>;
   if (name === 'mic' || name === 'micOff') return <svg viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="9" y="3" width="6" height="12" rx="3" /><path {...common} d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />{name === 'micOff' && <path {...common} d="M4 4 20 20" />}</svg>;
+  if (name === 'speaker' || name === 'speakerOff') return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 10v4h4l5 4V6l-5 4H4Z" /><path {...common} d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10" />{name === 'speakerOff' && <path {...common} d="M4 4 20 20" />}</svg>;
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m6 6 12 12M18 6 6 18" /></svg>;
 }
