@@ -27,6 +27,11 @@ from app.services.ws_manager import ws_manager
 
 app = FastAPI(title=settings.app_name)
 web_root = Path(__file__).resolve().parents[1] / 'web_dist'
+NO_STORE_HEADERS = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+}
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,7 +46,7 @@ app.add_middleware(
 def root():
     index_path = web_root / 'index.html'
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers=NO_STORE_HEADERS)
     return {
         'name': settings.app_name,
         'status': 'ok',
@@ -50,12 +55,12 @@ def root():
     }
 
 
-for web_asset in ('apple-touch-icon.png', 'favicon.svg', 'logo.svg', 'manifest.webmanifest', 'sw.js'):
+for web_asset in ('apple-touch-icon.png', 'favicon.svg', 'logo.svg', 'manifest.webmanifest', 'release.json', 'sw.js'):
     web_asset_path = web_root / web_asset
     if web_asset_path.exists():
         app.add_api_route(
             f'/{web_asset}',
-            lambda path=web_asset_path: FileResponse(path),
+            lambda path=web_asset_path: FileResponse(path, headers=NO_STORE_HEADERS),
             include_in_schema=False,
         )
 

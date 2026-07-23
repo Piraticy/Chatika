@@ -1,7 +1,8 @@
-const CACHE_NAME = 'chatika-shell-v11';
+const CACHE_NAME = 'chatika-shell-v12';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
+  '/release.json',
   '/favicon.svg',
   '/logo.svg',
   '/icons/icon-192.png',
@@ -65,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).then((response) => {
+    event.respondWith(fetch(request, { cache: 'no-store' }).then((response) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put('/', copy));
       return response;
@@ -74,10 +75,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)) {
-    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+    event.respondWith(fetch(request, { cache: 'no-store' }).then((response) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
       return response;
-    })));
+    }).catch(() => caches.match(request)));
   }
 });

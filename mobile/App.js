@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  AppState,
   useWindowDimensions
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -145,15 +146,30 @@ export default function App() {
   }, [token, refreshToken]);
 
   useEffect(() => {
-    if (__DEV__) return;
+    if (__DEV__) return undefined;
 
-    Updates.checkForUpdateAsync()
-      .then(async (result) => {
+    let checking = false;
+    const applyAvailableUpdate = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const result = await Updates.checkForUpdateAsync();
         if (!result.isAvailable) return;
         await Updates.fetchUpdateAsync();
         await Updates.reloadAsync();
-      })
-      .catch(() => undefined);
+      } catch (_error) {
+        return;
+      } finally {
+        checking = false;
+      }
+    };
+
+    applyAvailableUpdate();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') applyAvailableUpdate();
+    });
+
+    return () => subscription.remove();
   }, []);
 
   async function hydrate(currentToken) {
@@ -410,7 +426,7 @@ export default function App() {
         body: {
           ...feedbackForm,
           comment: feedbackForm.comment.trim() || null,
-          app_version: Constants.expoConfig?.version || '0.4.11',
+          app_version: 'beta',
           platform: Platform.OS
         }
       });
@@ -571,7 +587,7 @@ export default function App() {
           </ScrollView>
         </View>
       </Modal>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.11</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · beta</Text>
     </SafeAreaView>
   );
 }

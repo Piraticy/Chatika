@@ -16,6 +16,34 @@ function notifyUpdateAvailable(registration) {
   registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 }
 
+const RELEASE_KEY = 'chatika_release_id';
+
+async function refreshForNewRelease() {
+  try {
+    const response = await fetch(`/release.json?at=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) return;
+
+    const release = await response.json();
+    const releaseId = String(release?.id || '');
+    if (!releaseId) return;
+
+    const previousReleaseId = localStorage.getItem(RELEASE_KEY);
+    localStorage.setItem(RELEASE_KEY, releaseId);
+    if (!previousReleaseId || previousReleaseId === releaseId) return;
+
+    const reloadKey = `chatika_release_reloaded_${releaseId}`;
+    if (sessionStorage.getItem(reloadKey)) return;
+    sessionStorage.setItem(reloadKey, 'true');
+
+    const registration = await navigator.serviceWorker?.getRegistration();
+    await registration?.update();
+    registration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+    window.location.reload();
+  } catch (_error) {
+    return;
+  }
+}
+
 export function registerPwa() {
   const standalone = isStandalone();
 
@@ -47,7 +75,7 @@ export function registerPwa() {
 
   if (!('serviceWorker' in navigator)) return;
 
-  navigator.serviceWorker.register('/sw.js').then((registration) => {
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
     if (registration.waiting) notifyUpdateAvailable(registration);
 
     registration.addEventListener('updatefound', () => {
@@ -60,8 +88,17 @@ export function registerPwa() {
       });
     });
 
-    registration.update().catch(() => undefined);
-    window.setInterval(() => registration.update().catch(() => undefined), 5 * 60 * 1000);
+    const checkForUpdates = () => {
+      registration.update().catch(() => undefined);
+      refreshForNewRelease();
+    };
+
+    checkForUpdates();
+    window.addEventListener('pageshow', checkForUpdates);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdates();
+    });
+    window.setInterval(checkForUpdates, 60 * 1000);
     window.addEventListener('pagehide', () => {
       registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
     });
