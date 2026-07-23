@@ -84,6 +84,8 @@ export default function App() {
   const [token, setToken] = useState('');
   const [refreshToken, setRefreshToken] = useState('');
   const [me, setMe] = useState(null);
+  const [storageReady, setStorageReady] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -106,12 +108,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
     (async () => {
-      const t = (await AsyncStorage.getItem(ACCESS_KEY)) || '';
-      const r = (await AsyncStorage.getItem(REFRESH_KEY)) || '';
-      setToken(t);
-      setRefreshToken(r);
+      try {
+        const storedToken = (await AsyncStorage.getItem(ACCESS_KEY)) || '';
+        const storedRefreshToken = (await AsyncStorage.getItem(REFRESH_KEY)) || '';
+        if (!active) return;
+        setToken(storedToken);
+        setRefreshToken(storedRefreshToken);
+      } catch {
+        if (active) {
+          setToken('');
+          setRefreshToken('');
+        }
+      } finally {
+        if (active) setStorageReady(true);
+      }
     })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -169,9 +187,20 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!token) return;
-    hydrate(token).catch(() => tryRefresh());
-  }, [token]);
+    let active = true;
+    if (!storageReady) return () => { active = false; };
+    if (!token) {
+      setSessionReady(true);
+      return () => { active = false; };
+    }
+    setSessionReady(false);
+    hydrate(token)
+      .catch(() => tryRefresh())
+      .finally(() => {
+        if (active) setSessionReady(true);
+      });
+    return () => { active = false; };
+  }, [storageReady, token]);
 
   useEffect(() => {
     if (!token || !Device.isDevice) return;
@@ -332,6 +361,17 @@ export default function App() {
     );
   }
 
+  if (!sessionReady) {
+    return (
+      <SafeAreaView style={styles.startupWrap}>
+        <StatusBar style="light" />
+        <Image source={require('./assets/icon.png')} style={styles.startupLogo} />
+        <Text style={styles.startupTitle}>Chatika</Text>
+        <Text style={styles.startupText}>Opening your conversations…</Text>
+      </SafeAreaView>
+    );
+  }
+
   if (!me) {
     return (
       <SafeAreaView style={styles.authWrap}>
@@ -423,12 +463,21 @@ export default function App() {
           <Text style={styles.sendTxt}>Send</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.7</Text>
+      <Text style={styles.mobileCredit}>Built with care by Piraticy · v0.4.8</Text>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  startupWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0a1221'
+  },
+  startupLogo: { width: 82, height: 82, borderRadius: 24, marginBottom: 14 },
+  startupTitle: { color: '#f7fbff', fontSize: 25, fontWeight: '800' },
+  startupText: { color: '#9cb1bd', fontSize: 12, marginTop: 6 },
   authWrap: {
     flex: 1,
     paddingHorizontal: 16,

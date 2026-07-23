@@ -17,12 +17,14 @@ function lastRoomKey(userId) {
 }
 
 export default function App() {
+  const initialAccessToken = localStorage.getItem(ACCESS_KEY) || '';
   const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [token, setToken] = useState(localStorage.getItem(ACCESS_KEY) || '');
+  const [token, setToken] = useState(initialAccessToken);
   const [refreshToken, setRefreshToken] = useState(localStorage.getItem(REFRESH_KEY) || '');
+  const [sessionReady, setSessionReady] = useState(false);
 
   const [me, setMe] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -139,10 +141,24 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!token) return;
-    hydrateSession(token).catch(() => {
-      tryRefresh();
-    });
+    let active = true;
+    if (!token) {
+      const startupDelay = window.setTimeout(() => {
+        if (active) setSessionReady(true);
+      }, 180);
+      return () => {
+        active = false;
+        window.clearTimeout(startupDelay);
+      };
+    }
+
+    setSessionReady(false);
+    hydrateSession(token)
+      .catch(() => tryRefresh())
+      .finally(() => {
+        if (active) setSessionReady(true);
+      });
+    return () => { active = false; };
   }, [token]);
 
   useEffect(() => {
@@ -893,6 +909,10 @@ export default function App() {
     return `${others.length} participant${others.length === 1 ? '' : 's'}`;
   }, [activeRoom, me?.id]);
 
+  if (!sessionReady) {
+    return <StartupScreen />;
+  }
+
   if (!isAuthed) {
     return (
       <div className="auth-root">
@@ -1016,4 +1036,15 @@ export default function App() {
 
 function canUseAdmin(user) {
   return Boolean(user?.is_admin && user.username?.toLowerCase() === 'piraticy');
+}
+
+function StartupScreen() {
+  return (
+    <main className="startup-screen" aria-label="Chatika is starting">
+      <img src="/logo.svg" alt="" />
+      <strong>Chatika</strong>
+      <span>Opening your conversations…</span>
+      <i aria-hidden="true"><b /><b /><b /></i>
+    </main>
+  );
 }
