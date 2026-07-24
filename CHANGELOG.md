@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.14 - 2026-07-24
+
+### Changed
+- Remove the "free" TURN fallback added last release - a live protocol test showed it never actually responded, so it wasn't fixing call connectivity as intended. Add a real Cloudflare Realtime TURN integration instead, gated behind config (`CLOUDFLARE_TURN_KEY_ID`/`CLOUDFLARE_TURN_API_TOKEN`) that mints fresh short-lived credentials per request.
+- Give every user without a profile photo a distinct default avatar (color + initial, deterministic per account) instead of one identical icon for everyone - unified across the chat sidebar, call screens, and admin panel.
+- Deep-link message/call push notifications to the specific conversation instead of just opening the app root.
+- Fix two N+1 query patterns on the hot path: listing conversations was doing 3 queries per room, and opening a room with replies was doing up to 2 extra queries per reply message. Both now batch into a constant number of queries.
+
 ## v0.4.13 - 2026-07-24
 
 ### Changed

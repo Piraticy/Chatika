@@ -29,7 +29,7 @@ def _room_member_ids(db: Session, room_id: str) -> list[str]:
     return [m.user_id for m in members]
 
 
-async def _push_realtime_alerts(db: Session, target_ids: list[str], sender: User, data: dict) -> None:
+async def _push_realtime_alerts(db: Session, target_ids: list[str], sender: User, data: dict, room_id: str | None = None) -> None:
     if data.get('type') not in {'call-offer', 'offer'} or not target_ids:
         return
     tokens = db.scalars(
@@ -49,7 +49,7 @@ async def _push_realtime_alerts(db: Session, target_ids: list[str], sender: User
             'title': f'Incoming {kind} call' if is_call else 'Screen share invitation',
             'body': f'@{sender.username} is calling you.' if is_call else f'@{sender.username} started sharing their screen.',
             'tag': f"chatika-{data.get('type')}-{sender.id}",
-            'url': '/',
+            'url': f'/?room={room_id}' if room_id else '/',
         },
     ))
 
@@ -120,7 +120,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                                 'data': data,
                             },
                         )
-                        await _push_realtime_alerts(db, targets, user, data)
+                        await _push_realtime_alerts(db, targets, user, data, room_id)
                 elif target_user_id:
                     await ws_manager.send_user(
                         target_user_id,

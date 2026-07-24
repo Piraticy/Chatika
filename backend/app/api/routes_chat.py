@@ -336,7 +336,70 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     if not room_ids:
         return []
     rooms = db.scalars(select(ChatRoom).where(ChatRoom.id.in_(room_ids))).all()
-    room_outs = [_room_out(db, room, current_user.id) for room in rooms]
+
+    # _room_out() is convenient for single-room call sites, but calling it in a
+    # loop here meant 3 queries per room (memberships, users, last message) -
+    # real latency against a remote Postgres. Batch all three into a constant
+    # number of queries regardless of how many rooms the user is in.
+    all_memberships = db.scalars(select(ChatRoomMember).where(ChatRoomMember.room_id.in_(room_ids))).all()
+    member_ids_by_room: dict[str, list[str]] = {}
+    all_user_ids: set[str] = set()
+    for membership in all_memberships:
+        member_ids_by_room.setdefault(membership.room_id, []).append(membership.user_id)
+        all_user_ids.add(membership.user_id)
+    users_by_id = (
+        {user.id: user for user in db.scalars(select(User).where(User.id.in_(all_user_ids))).all()}
+        if all_user_ids else {}
+    )
+
+    # Message.id is a random UUID (not time-ordered), so "latest per room" has to
+    # go by created_at, not MAX(id).
+    last_message_marks_subq = (
+        select(Message.room_id, func.max(Message.created_at).label('max_created_at'))
+        .where(Message.room_id.in_(room_ids))
+        .group_by(Message.room_id)
+        .subquery()
+    )
+    last_message_by_room = {
+        message.room_id: message
+        for message in db.scalars(
+            select(Message).join(
+                last_message_marks_subq,
+                (Message.room_id == last_message_marks_subq.c.room_id)
+                & (Message.created_at == last_message_marks_subq.c.max_created_at),
+            )
+        ).all()
+    }
+
+    room_outs = []
+    for room in rooms:
+        participants = [
+            RoomParticipantOut(
+                id=user.id, username=user.username, avatar_url=user.avatar_url,
+                is_online=user.is_online, last_seen_at=user.last_seen_at,
+            )
+            for user_id in member_ids_by_room.get(room.id, [])
+            if (user := users_by_id.get(user_id))
+        ]
+        name = room.name
+        if not room.is_group:
+            other_user = next((participant for participant in participants if participant.id != current_user.id), None)
+            if other_user:
+                name = other_user.username
+        last_message = last_message_by_room.get(room.id)
+        room_outs.append(RoomOut(
+            id=room.id,
+            name=name,
+            is_group=room.is_group,
+            created_by=room.created_by,
+            participant_ids=[participant.id for participant in participants],
+            participants=participants,
+            last_message_text=last_message.text if last_message else None,
+            last_message_type=last_message.message_type if last_message else None,
+            last_message_at=last_message.created_at if last_message else None,
+            last_message_sender_id=last_message.sender_id if last_message else None,
+        ))
+
     # Most recently active conversation first, like every other chat app - rooms
     # with no messages yet (last_message_at is None) sort to the bottom.
     room_outs.sort(key=lambda room: room.last_message_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
@@ -405,7 +468,7 @@ async def send_message(
                 'title': f'New message from @{current_user.username}',
                 'body': message.text[:160] if message.text else 'You received a new message.',
                 'tag': f'chatika-message-{message.room_id}',
-                'url': '/',
+                'url': f'/?room={message.room_id}',
                 'room_id': message.room_id,
                 'sender_id': message.sender_id,
                 'preview': message.text[:160] if message.text else 'New encrypted message',
@@ -451,6 +514,33 @@ def list_messages(
         user.id: user.username
         for user in db.scalars(select(User).where(User.id.in_(sender_ids))).all()
     } if sender_ids else {}
+
+    # _reply_fields() does up to 2 queries per call - fine for a single message,
+    # but calling it per message here meant up to 2N extra queries per room open.
+    # Batch the replied-to messages and their senders once instead.
+    reply_ids = {message.reply_to_id for message in messages if message.reply_to_id}
+    replied_messages_by_id = (
+        {replied.id: replied for replied in db.scalars(select(Message).where(Message.id.in_(reply_ids))).all()}
+        if reply_ids else {}
+    )
+    replied_sender_ids = {replied.sender_id for replied in replied_messages_by_id.values()}
+    replied_sender_usernames = (
+        {user.id: user.username for user in db.scalars(select(User).where(User.id.in_(replied_sender_ids))).all()}
+        if replied_sender_ids else {}
+    )
+
+    def reply_fields_for(message: Message) -> dict:
+        if not message.reply_to_id:
+            return {'reply_to_id': None, 'reply_to_sender_username': None, 'reply_to_text': None}
+        replied = replied_messages_by_id.get(message.reply_to_id)
+        if not replied:
+            return {'reply_to_id': message.reply_to_id, 'reply_to_sender_username': None, 'reply_to_text': None}
+        return {
+            'reply_to_id': replied.id,
+            'reply_to_sender_username': replied_sender_usernames.get(replied.sender_id),
+            'reply_to_text': replied.text,
+        }
+
     return [
         MessageOut(
             id=m.id,
@@ -464,7 +554,7 @@ def list_messages(
             reaction_users=_parse_reactions(m),
             text=m.text,
             media_url=m.media_url,
-            **_reply_fields(db, m),
+            **reply_fields_for(m),
             created_at=m.created_at,
         )
         for m in messages

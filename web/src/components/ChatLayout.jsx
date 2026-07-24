@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 import { resolveMediaUrl } from '../lib/api';
+import { avatarGradient, avatarInitial } from '../lib/avatar';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
@@ -27,9 +28,12 @@ function roomLabel(room, userId) {
 }
 
 function Avatar({ user, size = 'default' }) {
-  return user?.avatar_url
-    ? <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />
-    : <span className={`user-avatar ${size}`} role="img" aria-label="Chatika avatar">{CHATIKA_EMOJIS[0].glyph}</span>;
+  if (user?.avatar_url) return <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
+  return (
+    <span className={`user-avatar ${size}`} style={avatarGradient(user?.id || user?.username)} role="img" aria-label="Chatika avatar">
+      {avatarInitial(user?.username)}
+    </span>
+  );
 }
 
 export default function ChatLayout({

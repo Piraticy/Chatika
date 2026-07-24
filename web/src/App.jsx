@@ -131,8 +131,15 @@ export default function App() {
     ]);
     setMe(meData);
     setRooms(roomData);
-    setActiveRoomId('');
+
+    // A push notification deep-links here as /?room=<id> (see routes_chat.py /
+    // routes_presence_ws.py) - honor it once, then drop it from the URL so a
+    // later refresh doesn't keep forcing that room open.
+    const deepLinkRoomId = new URLSearchParams(window.location.search).get('room');
+    const validDeepLink = deepLinkRoomId && roomData.some((room) => room.id === deepLinkRoomId);
+    setActiveRoomId(validDeepLink ? deepLinkRoomId : '');
     setMessages([]);
+    if (deepLinkRoomId) window.history.replaceState(null, '', window.location.pathname);
 
     if (canUseAdmin(meData)) {
       const pending = await api('/admin/pending-users', { token: currentToken });

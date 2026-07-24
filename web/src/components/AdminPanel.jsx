@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { avatarGradient, avatarInitial } from '../lib/avatar';
 
 export default function AdminPanel({ open, users = [], feedback = [], passwordResetRequests = [], loading, error, onClose, onRefresh, onApprove, onRemove, onResetPassword }) {
   const [query, setQuery] = useState('');
@@ -151,7 +152,7 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
               <article className="user-row" key={user.id}>
                 {user.avatar_url
                   ? <img className="user-avatar" src={user.avatar_url} alt="" />
-                  : <span className="user-avatar">{user.username.slice(0, 1).toUpperCase()}</span>}
+                  : <span className="user-avatar" style={avatarGradient(user.id || user.username)}>{avatarInitial(user.username)}</span>}
                 <div className="user-details">
                   <strong>@{user.username}</strong>
                   <small>{presenceLabel(user)}</small>

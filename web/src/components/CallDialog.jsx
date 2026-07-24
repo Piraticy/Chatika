@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { resolveMediaUrl } from '../lib/api';
+import { avatarGradient, avatarInitial } from '../lib/avatar';
 
 function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -122,7 +123,11 @@ export default function CallDialog({
 
 function CallAvatar({ profile, large = false }) {
   if (profile?.avatar_url) return <img className={`call-profile-photo ${large ? 'large' : ''}`} src={resolveMediaUrl(profile.avatar_url)} alt="" />;
-  return <div className={`call-avatar ${large ? 'call-avatar-large' : ''}`}>{(profile?.username || '?').slice(0, 1).toUpperCase()}</div>;
+  return (
+    <div className={`call-avatar ${large ? 'call-avatar-large' : ''}`} style={avatarGradient(profile?.id || profile?.username)}>
+      {avatarInitial(profile?.username)}
+    </div>
+  );
 }
 
 function RemoteCallMedia({ userId, username, profile, stream, video, speakerOn }) {

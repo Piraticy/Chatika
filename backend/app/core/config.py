@@ -38,18 +38,25 @@ class Settings(BaseSettings):
 
     force_turn: bool = False
     # STUN alone fails whenever either side is behind a restrictive/carrier-grade
-    # NAT (common on mobile networks) since there's no relay fallback. Open Relay
-    # is a free, shared TURN service - fine to unblock calls in beta, but has no
-    # uptime guarantee. Override via the ICE_SERVERS env var once a dedicated
-    # TURN provider (self-hosted coturn or a managed service) is set up.
+    # NAT (common on mobile networks) since there's no relay fallback. A previous
+    # attempt hardcoded the "Open Relay" free TURN demo credentials here, but a
+    # live STUN probe against it timed out on every port - that service is dead,
+    # so it's been removed rather than ship an entry that silently does nothing.
+    # See cloudflare_turn_key_id/cloudflare_turn_api_token below for a real,
+    # verified-live TURN option, or override this list entirely via ICE_SERVERS.
     ice_servers: list[dict[str, Any]] = Field(
         default_factory=lambda: [
             {'urls': ['stun:stun.l.google.com:19302']},
-            {'urls': ['turn:openrelay.metered.ca:80'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-            {'urls': ['turn:openrelay.metered.ca:443'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-            {'urls': ['turn:openrelay.metered.ca:443?transport=tcp'], 'username': 'openrelayproject', 'credential': 'openrelayproject'},
         ]
     )
+
+    # Cloudflare Realtime TURN (https://developers.cloudflare.com/realtime/turn/):
+    # has a real free tier and is actively maintained. When both are set, ice-config
+    # mints short-lived TURN credentials from Cloudflare's API on every request and
+    # merges them with the static ice_servers above. Leave unset to skip entirely.
+    cloudflare_turn_key_id: Optional[str] = None
+    cloudflare_turn_api_token: Optional[str] = None
+    cloudflare_turn_ttl_seconds: int = 86400
 
     @property
     def sqlalchemy_database_url(self) -> str:
