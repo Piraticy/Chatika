@@ -17,7 +17,7 @@ async def _cloudflare_turn_servers() -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=CLOUDFLARE_TURN_TIMEOUT_SECONDS) as client:
             response = await client.post(
-                f'https://rtc.live.cloudflare.com/v1/turn/keys/{settings.cloudflare_turn_key_id}/credentials/generate',
+                f'https://rtc.live.cloudflare.com/v1/turn/keys/{settings.cloudflare_turn_key_id}/credentials/generate-ice-servers',
                 headers={'Authorization': f'Bearer {settings.cloudflare_turn_api_token}'},
                 json={'ttl': settings.cloudflare_turn_ttl_seconds},
             )
