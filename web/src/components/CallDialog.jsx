@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { resolveMediaUrl } from '../lib/api';
-import { avatarGradient, avatarInitial } from '../lib/avatar';
+import { avatarGradient, avatarInitial, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 
 function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -122,7 +122,15 @@ export default function CallDialog({
 }
 
 function CallAvatar({ profile, large = false }) {
-  if (profile?.avatar_url) return <img className={`call-profile-photo ${large ? 'large' : ''}`} src={resolveMediaUrl(profile.avatar_url)} alt="" />;
+  const preset = presetFromAvatarUrl(profile?.avatar_url);
+  if (profile?.avatar_url && !preset) return <img className={`call-profile-photo ${large ? 'large' : ''}`} src={resolveMediaUrl(profile.avatar_url)} alt="" />;
+  if (preset) {
+    return (
+      <div className={`call-avatar ${large ? 'call-avatar-large' : ''}`} style={presetGradient(preset)}>
+        {preset.glyph}
+      </div>
+    );
+  }
   return (
     <div className={`call-avatar ${large ? 'call-avatar-large' : ''}`} style={avatarGradient(profile?.id || profile?.username)}>
       {avatarInitial(profile?.username)}

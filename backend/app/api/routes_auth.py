@@ -12,6 +12,10 @@ from app.services.security import create_access_token, create_refresh_token, has
 
 router = APIRouter(prefix='/auth', tags=['auth'])
 
+# Mirrors AVATAR_PRESETS in web/src/lib/avatar.js - keep the id set in sync if
+# presets are added/removed there.
+PRESET_AVATAR_IDS = {f'p{n}' for n in range(1, 13)}
+
 COUNTRY_HEADERS = (
     'cf-ipcountry',
     'cloudfront-viewer-country',
@@ -165,8 +169,11 @@ def update_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UserMe:
-    if data.avatar_url and not data.avatar_url.startswith(f'/api/v1/media/files/{current_user.id}/'):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Profile image must be uploaded by this account')
+    if data.avatar_url:
+        is_own_upload = data.avatar_url.startswith(f'/api/v1/media/files/{current_user.id}/')
+        is_known_preset = data.avatar_url.startswith('preset:') and data.avatar_url.removeprefix('preset:') in PRESET_AVATAR_IDS
+        if not is_own_upload and not is_known_preset:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Profile image must be uploaded by this account')
 
     current_user.avatar_url = data.avatar_url
     db.add(current_user)

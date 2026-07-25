@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { avatarGradient, avatarInitial } from '../lib/avatar';
+import { avatarGradient, avatarInitial, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 
 export default function AdminPanel({ open, users = [], feedback = [], passwordResetRequests = [], loading, error, onClose, onRefresh, onApprove, onRemove, onResetPassword }) {
   const [query, setQuery] = useState('');
@@ -150,9 +150,12 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
           <div className="user-table" role="table" aria-label="Chatika users">
             {filteredUsers.map((user) => (
               <article className="user-row" key={user.id}>
-                {user.avatar_url
-                  ? <img className="user-avatar" src={user.avatar_url} alt="" />
-                  : <span className="user-avatar" style={avatarGradient(user.id || user.username)}>{avatarInitial(user.username)}</span>}
+                {(() => {
+                  const preset = presetFromAvatarUrl(user.avatar_url);
+                  if (user.avatar_url && !preset) return <img className="user-avatar" src={user.avatar_url} alt="" />;
+                  if (preset) return <span className="user-avatar" style={presetGradient(preset)}>{preset.glyph}</span>;
+                  return <span className="user-avatar" style={avatarGradient(user.id || user.username)}>{avatarInitial(user.username)}</span>;
+                })()}
                 <div className="user-details">
                   <strong>@{user.username}</strong>
                   <small>{presenceLabel(user)}</small>

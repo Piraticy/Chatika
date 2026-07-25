@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.15 - 2026-07-24
+
+### Changed
+- Add an avatar picker: choose from 12 curated icon/color combinations instead of only an auto-assigned default or an uploaded photo, from a new "Choose your avatar" dialog on the profile picture.
+
 ## v0.4.14 - 2026-07-24
 
 ### Changed

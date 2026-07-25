@@ -11,6 +11,7 @@ import { createSocket } from './lib/socket';
 import { enableWebPush } from './lib/push';
 import { startChatikaRingtone, stopChatikaRingtone } from './lib/callTone';
 import { APP_VERSION } from './lib/version';
+import { presetAvatarUrl } from './lib/avatar';
 
 const ACCESS_KEY = 'chatika_access';
 const REFRESH_KEY = 'chatika_refresh';
@@ -441,6 +442,23 @@ export default function App() {
       method: 'PATCH',
       token,
       body: { avatar_url: uploaded.media_url }
+    });
+    setMe(updatedProfile);
+    setRooms((prev) => prev.map((room) => ({
+      ...room,
+      participants: (room.participants || []).map((participant) => (
+        participant.id === updatedProfile.id
+          ? { ...participant, avatar_url: updatedProfile.avatar_url }
+          : participant
+      ))
+    })));
+  }
+
+  async function chooseProfilePreset(presetId) {
+    const updatedProfile = await authedApi('/auth/profile', {
+      method: 'PATCH',
+      token,
+      body: { avatar_url: presetAvatarUrl(presetId) }
     });
     setMe(updatedProfile);
     setRooms((prev) => prev.map((room) => ({
@@ -1279,6 +1297,7 @@ export default function App() {
         onDiscoverFriends={discoverFriends}
         onCreateGroup={createGroup}
         onChangeProfilePhoto={updateProfilePhoto}
+        onChoosePresetAvatar={chooseProfilePreset}
         statusText={statusText}
         isAdmin={canUseAdmin(me)}
         pendingUsers={pendingUsers}

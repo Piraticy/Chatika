@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 import { resolveMediaUrl } from '../lib/api';
-import { avatarGradient, avatarInitial } from '../lib/avatar';
+import { avatarGradient, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
@@ -28,7 +28,15 @@ function roomLabel(room, userId) {
 }
 
 function Avatar({ user, size = 'default' }) {
-  if (user?.avatar_url) return <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
+  const preset = presetFromAvatarUrl(user?.avatar_url);
+  if (user?.avatar_url && !preset) return <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
+  if (preset) {
+    return (
+      <span className={`user-avatar ${size}`} style={presetGradient(preset)} role="img" aria-label="Chatika avatar">
+        {preset.glyph}
+      </span>
+    );
+  }
   return (
     <span className={`user-avatar ${size}`} style={avatarGradient(user?.id || user?.username)} role="img" aria-label="Chatika avatar">
       {avatarInitial(user?.username)}
@@ -52,6 +60,7 @@ export default function ChatLayout({
   onDiscoverFriends,
   onCreateGroup,
   onChangeProfilePhoto,
+  onChoosePresetAvatar,
   statusText,
   isAdmin,
   pendingUsers,
@@ -103,6 +112,8 @@ export default function ChatLayout({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [localError, setLocalError] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarPickerError, setAvatarPickerError] = useState('');
   const [discoverScope, setDiscoverScope] = useState('online');
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [discoverUsers, setDiscoverUsers] = useState([]);
@@ -276,7 +287,7 @@ export default function ChatLayout({
       <button className="mobile-menu-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
       <aside className={sidebarOpen ? 'sidebar glass open' : 'sidebar glass'}>
         <div className="sidebar-head">
-          <button className="profile-button" type="button" onClick={() => profileInputRef.current?.click()} aria-label="Change profile picture"><Avatar user={me} size="large" /></button>
+          <button className="profile-button" type="button" onClick={() => { setAvatarPickerError(''); setAvatarPickerOpen(true); }} aria-label="Change profile picture"><Avatar user={me} size="large" /></button>
           <input ref={profileInputRef} className="file-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const [file] = event.target.files || []; if (file) onChangeProfilePhoto?.(file).catch((error) => setLocalError(error.message)); event.target.value = ''; }} />
           <div className="identity"><h2>@{me.username}</h2><small>{statusText}</small></div>
           <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation"><UiIcon name="close" /></button>
@@ -362,6 +373,42 @@ export default function ChatLayout({
           {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}
         </div>
       </main>
+
+      {avatarPickerOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setAvatarPickerOpen(false)}>
+          <section className="avatar-picker-modal" role="dialog" aria-modal="true" aria-labelledby="avatar-picker-title">
+            <header>
+              <h2 id="avatar-picker-title">Choose your avatar</h2>
+              <button className="icon-button" type="button" onClick={() => setAvatarPickerOpen(false)} aria-label="Close">×</button>
+            </header>
+            <button type="button" className="avatar-picker-upload" onClick={() => { setAvatarPickerOpen(false); profileInputRef.current?.click(); }}>
+              <UiIcon name="plus" /> Upload your own photo
+            </button>
+            {avatarPickerError && <p className="sidebar-error">{avatarPickerError}</p>}
+            <div className="avatar-picker-grid">
+              {AVATAR_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="avatar-picker-option"
+                  style={presetGradient(preset)}
+                  aria-label={`Use this avatar`}
+                  onClick={async () => {
+                    try {
+                      await onChoosePresetAvatar?.(preset.id);
+                      setAvatarPickerOpen(false);
+                    } catch (error) {
+                      setAvatarPickerError(error.message || 'Could not set this avatar.');
+                    }
+                  }}
+                >
+                  {preset.glyph}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
