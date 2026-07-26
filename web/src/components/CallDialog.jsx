@@ -143,6 +143,9 @@ function RemoteCallMedia({ userId, username, profile, stream, video, speakerOn }
   useEffect(() => {
     const media = mediaRef.current;
     if (!media) return;
+    const resumePlayback = () => {
+      if (speakerOn) media.play().catch(() => undefined);
+    };
     media.srcObject = stream;
     // Real earpiece/speaker output routing (setSinkId) isn't available in Safari/WebKit,
     // so this can only toggle whether remote audio is actually audible, not which
@@ -150,6 +153,9 @@ function RemoteCallMedia({ userId, username, profile, stream, video, speakerOn }
     media.volume = speakerOn ? 1 : 0;
     media.muted = !speakerOn;
     if (speakerOn && typeof media.setSinkId === 'function') media.setSinkId('default').catch(() => undefined);
+    media.addEventListener('loadedmetadata', resumePlayback);
+    resumePlayback();
+    return () => media.removeEventListener('loadedmetadata', resumePlayback);
   }, [speakerOn, stream]);
   if (video) return <div className="remote-call-media portrait-remote-video"><video ref={mediaRef} className="call-video" autoPlay playsInline /><span>@{username || userId.slice(0, 6)}</span></div>;
   return <audio ref={mediaRef} className="remote-call-audio" autoPlay playsInline />;

@@ -11,6 +11,16 @@ router = APIRouter(prefix='/realtime', tags=['realtime'])
 CLOUDFLARE_TURN_TIMEOUT_SECONDS = 5.0
 
 
+def _has_turn_server(ice_servers: list[dict]) -> bool:
+    for server in ice_servers:
+        urls = server.get('urls', [])
+        if not isinstance(urls, list):
+            urls = [urls]
+        if any(str(url).startswith(('turn:', 'turns:')) for url in urls):
+            return True
+    return False
+
+
 async def _cloudflare_turn_servers() -> list[dict]:
     if not settings.cloudflare_turn_key_id or not settings.cloudflare_turn_api_token:
         return []
@@ -34,13 +44,22 @@ async def _cloudflare_turn_servers() -> list[dict]:
         ice_servers = [ice_servers]
     if not isinstance(ice_servers, list):
         return []
-    return [entry for entry in ice_servers if isinstance(entry, dict) and entry.get('urls')]
+    valid_servers = []
+    for entry in ice_servers:
+        if not isinstance(entry, dict) or not entry.get('urls'):
+            continue
+        urls = entry['urls'] if isinstance(entry['urls'], list) else [entry['urls']]
+        filtered_urls = [url for url in urls if ':53' not in str(url)]
+        if filtered_urls:
+            valid_servers.append({**entry, 'urls': filtered_urls})
+    return valid_servers
 
 
 @router.get('/ice-config', response_model=IceConfigOut)
 async def ice_config(_current_user: User = Depends(get_current_user)) -> IceConfigOut:
     turn_servers = await _cloudflare_turn_servers()
-    return IceConfigOut(force_turn=settings.force_turn, ice_servers=[*settings.ice_servers, *turn_servers])
+    ice_servers = [*settings.ice_servers, *turn_servers]
+    return IceConfigOut(force_turn=settings.force_turn and _has_turn_server(ice_servers), ice_servers=ice_servers)
 
 
 @router.get('/push-config')

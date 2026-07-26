@@ -83,6 +83,7 @@ export default function App() {
   const peerRoomIdsRef = useRef(new Map());
   const pendingIceRef = useRef(new Map());
   const iceServersRef = useRef([]);
+  const iceConfigExpiresAtRef = useRef(0);
   const remoteStreamsRef = useRef(new Map());
   const localCallStreamRef = useRef(null);
   const callPeerConnectionsRef = useRef(new Map());
@@ -320,7 +321,8 @@ export default function App() {
             setMe((current) => current ? { ...current, is_online: presence.is_online, last_seen_at: presence.last_seen_at } : current);
           }
         } else if (evt.event === 'call:signal') {
-          if (!evt.room_id || evt.room_id === activeRoomId) {
+          const isCallSignal = evt.data?.type?.startsWith('call-');
+          if (isCallSignal || !evt.room_id || evt.room_id === activeRoomId) {
             handleCallSignal(evt).catch((error) => {
               if (evt.data?.type?.startsWith('call-')) setCallError(error.message || 'Call connection failed.');
               else setShareError(error.message || 'Screen sharing connection failed.');
@@ -695,29 +697,36 @@ export default function App() {
   }
 
   async function getIceServers() {
-    if (iceServersRef.current.length) return iceServersRef.current;
+    if (iceServersRef.current.length && Date.now() < iceConfigExpiresAtRef.current) return iceServersRef.current;
     try {
       const config = await authedApi('/realtime/ice-config', { token });
-      iceTransportPolicyRef.current = config.force_turn ? 'relay' : 'all';
       iceServersRef.current = config.ice_servers?.length
         ? config.ice_servers
         : [{ urls: ['stun:stun.l.google.com:19302'] }];
+      const hasTurnServer = iceServersRef.current.some((server) => {
+        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return urls.some((url) => String(url || '').startsWith('turn:') || String(url || '').startsWith('turns:'));
+      });
+      iceTransportPolicyRef.current = config.force_turn && hasTurnServer ? 'relay' : 'all';
+      iceConfigExpiresAtRef.current = Date.now() + 15 * 60 * 1000;
     } catch (_error) {
       iceServersRef.current = [{ urls: ['stun:stun.l.google.com:19302'] }];
+      iceTransportPolicyRef.current = 'all';
+      iceConfigExpiresAtRef.current = Date.now() + 60 * 1000;
     }
     return iceServersRef.current;
   }
 
   function sendCallSignal(targetUserId, data, roomId = activeRoomId) {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !roomId) return;
-    socketRef.current.send(
+    if (!targetUserId || !roomId) return false;
+    return socketRef.current?.send(
       JSON.stringify({
         event: 'call:signal',
         room_id: roomId,
         target_user_id: targetUserId,
         data
       })
-    );
+    ) || false;
   }
 
   async function createPeerConnection(userId, roomId = activeRoomId) {
@@ -1020,6 +1029,9 @@ export default function App() {
     const peer = callPeerConnectionsRef.current.get(userId);
     if (!peer || peer.signalingState !== 'stable' || !callActive) return;
     try {
+      iceConfigExpiresAtRef.current = 0;
+      const iceServers = await getIceServers();
+      peer.setConfiguration({ iceServers, iceTransportPolicy: iceTransportPolicyRef.current });
       const offer = await peer.createOffer({ iceRestart: true });
       await peer.setLocalDescription(offer);
       sendCallSignal(userId, { type: 'call-offer', kind, description: offer, restart: true }, callPeerRoomIdsRef.current.get(userId));

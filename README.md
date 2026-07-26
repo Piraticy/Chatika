@@ -100,11 +100,14 @@ To invite someone, select a room, enter their approved username in **Invite to r
 
 ## Production Steps Next
 1. Swap webhook push bridge to direct FCM/APNs workers.
-2. Rotate TURN credentials dynamically (short-lived signed creds).
-3. Move one-time prekeys to dedicated table with atomic claim transactions.
-4. Add abuse controls: per-user rate limits, spam scoring, audit log.
-5. Add formal end-to-end protocol (Double Ratchet) in clients.
-6. Add observability stack (Sentry, metrics, traces, alerts).
+2. Move one-time prekeys to dedicated table with atomic claim transactions.
+3. Add abuse controls: per-user rate limits, spam scoring, audit log.
+4. Add formal end-to-end protocol (Double Ratchet) in clients.
+5. Add observability stack (Sentry, metrics, traces, alerts).
+
+### Reliable Audio and Video Calls
+
+For production calls across mobile networks, configure a TURN relay in Render. Add `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as service secrets. Chatika then generates short-lived ICE credentials on the server and gives each signed-in caller STUN plus TURN options. Do not expose either value in the web or mobile client. STUN-only connections can fail when a carrier NAT or firewall prevents direct peer-to-peer traffic.
 
 ## Free Hosting
 

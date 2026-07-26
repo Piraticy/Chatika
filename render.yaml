@@ -18,3 +18,7 @@ services:
         sync: false
       - key: BACKUP_ENCRYPTION_KEY
         sync: false
+      - key: CLOUDFLARE_TURN_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_TURN_API_TOKEN
+        sync: false

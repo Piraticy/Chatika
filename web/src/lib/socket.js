@@ -15,6 +15,7 @@ export function createSocket({ apiUrl, token, onEvent, onOpen }) {
   let reconnectAttempt = 0;
   let reconnectTimer = null;
   let pingTimer = null;
+  let pendingMessages = [];
 
   function clearTimers() {
     if (reconnectTimer) {
@@ -27,11 +28,19 @@ export function createSocket({ apiUrl, token, onEvent, onOpen }) {
     }
   }
 
+  function flushPendingMessages() {
+    if (socket?.readyState !== WebSocket.OPEN || !pendingMessages.length) return;
+    const messages = pendingMessages;
+    pendingMessages = [];
+    messages.forEach((message) => socket.send(message));
+  }
+
   function connect() {
     socket = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`);
 
     socket.onopen = () => {
       reconnectAttempt = 0;
+      flushPendingMessages();
       pingTimer = window.setInterval(() => {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'ping' }));
       }, PING_INTERVAL_MS);
@@ -70,10 +79,17 @@ export function createSocket({ apiUrl, token, onEvent, onOpen }) {
       return socket ? socket.readyState : WebSocket.CONNECTING;
     },
     send(data) {
-      socket?.send(data);
+      if (closedByCaller) return false;
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(data);
+        return true;
+      }
+      pendingMessages = [...pendingMessages.slice(-199), data];
+      return true;
     },
     close() {
       closedByCaller = true;
+      pendingMessages = [];
       clearTimers();
       socket?.close();
     }
