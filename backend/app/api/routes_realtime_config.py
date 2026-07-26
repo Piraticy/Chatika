@@ -1,3 +1,6 @@
+import asyncio
+import re
+
 import httpx
 from fastapi import APIRouter, Depends
 
@@ -9,6 +12,7 @@ from app.schemas.realtime import IceConfigOut
 router = APIRouter(prefix='/realtime', tags=['realtime'])
 
 CLOUDFLARE_TURN_TIMEOUT_SECONDS = 5.0
+METERED_TURN_TIMEOUT_SECONDS = 5.0
 
 
 def _has_turn_server(ice_servers: list[dict]) -> bool:
@@ -39,9 +43,30 @@ async def _cloudflare_turn_servers() -> list[dict]:
         # STUN-only fallback below rather than a broken ice-config response.
         return []
 
-    ice_servers = payload.get('iceServers')
+    return _normalise_turn_servers(payload.get('iceServers'))
+
+
+async def _metered_turn_servers() -> list[dict]:
+    app_name = (settings.metered_turn_app_name or '').strip()
+    api_key = (settings.metered_turn_api_key or '').strip()
+    if not app_name or not api_key or not re.fullmatch(r'[A-Za-z0-9-]+', app_name):
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=METERED_TURN_TIMEOUT_SECONDS) as client:
+            response = await client.get(
+                f'https://{app_name}.metered.live/api/v1/turn/credentials',
+                params={'apiKey': api_key},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return []
+    return _normalise_turn_servers(payload)
+
+
+def _normalise_turn_servers(ice_servers: object) -> list[dict]:
     if isinstance(ice_servers, dict):
-        ice_servers = [ice_servers]
+        ice_servers = ice_servers.get('iceServers', [ice_servers])
     if not isinstance(ice_servers, list):
         return []
     valid_servers = []
@@ -57,8 +82,11 @@ async def _cloudflare_turn_servers() -> list[dict]:
 
 @router.get('/ice-config', response_model=IceConfigOut)
 async def ice_config(_current_user: User = Depends(get_current_user)) -> IceConfigOut:
-    turn_servers = await _cloudflare_turn_servers()
-    ice_servers = [*settings.ice_servers, *turn_servers]
+    metered_servers, cloudflare_servers = await asyncio.gather(
+        _metered_turn_servers(),
+        _cloudflare_turn_servers(),
+    )
+    ice_servers = [*settings.ice_servers, *metered_servers, *cloudflare_servers]
     return IceConfigOut(force_turn=settings.force_turn and _has_turn_server(ice_servers), ice_servers=ice_servers)
 
 

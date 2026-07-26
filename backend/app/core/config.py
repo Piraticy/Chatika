@@ -37,23 +37,15 @@ class Settings(BaseSettings):
     vapid_claims_email: Optional[str] = None
 
     force_turn: bool = False
-    # STUN alone fails whenever either side is behind a restrictive/carrier-grade
-    # NAT (common on mobile networks) since there's no relay fallback. A previous
-    # attempt hardcoded the "Open Relay" free TURN demo credentials here, but a
-    # live STUN probe against it timed out on every port - that service is dead,
-    # so it's been removed rather than ship an entry that silently does nothing.
-    # See cloudflare_turn_key_id/cloudflare_turn_api_token below for a real,
-    # verified-live TURN option, or override this list entirely via ICE_SERVERS.
     ice_servers: list[dict[str, Any]] = Field(
         default_factory=lambda: [
             {'urls': ['stun:stun.l.google.com:19302']},
         ]
     )
 
-    # Cloudflare Realtime TURN (https://developers.cloudflare.com/realtime/turn/):
-    # has a real free tier and is actively maintained. When both are set, ice-config
-    # mints short-lived TURN credentials from Cloudflare's API on every request and
-    # merges them with the static ice_servers above. Leave unset to skip entirely.
+    metered_turn_app_name: Optional[str] = None
+    metered_turn_api_key: Optional[str] = None
+
     cloudflare_turn_key_id: Optional[str] = None
     cloudflare_turn_api_token: Optional[str] = None
     cloudflare_turn_ttl_seconds: int = 86400

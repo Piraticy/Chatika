@@ -32,7 +32,8 @@ Use the Session pooler URI on port `5432`, not a manually assembled URL. An erro
    - `BACKUP_ENCRYPTION_KEY` = long random secret
    - `REDIS_URL` = your redis URL (optional but recommended)
    - `FORCE_TURN` = `false` initially
-   - `ICE_SERVERS` = JSON array (see below) - a free/shared TURN fallback (Open Relay) ships as the default if unset
+   - `ICE_SERVERS` = JSON array (see below)
+   - `METERED_TURN_APP_NAME` and `METERED_TURN_API_KEY` = free Metered TURN credentials for reliable mobile calls
    - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` = your Web Push credentials (provider is auto-detected once these are set - see section 7)
 5. Deploy the blueprint. Open the service root URL for the UI; the API remains available under `/api/v1`.
 
@@ -102,11 +103,9 @@ npm run start
   - `PUSH_WEBHOOK_URL=https://<your-push-worker>/send`
 
 ## 8) TURN for reliable calls
-- A free/shared TURN fallback (Open Relay Project) ships as part of the default `ICE_SERVERS`, so calls should work out of the box even across restrictive/carrier-grade NATs. It's a shared community service with no uptime guarantee - fine for beta, not for production scale.
-- For production-grade reliability, either:
-  1. Deploy coturn on a VM (e.g. Oracle Always Free), open UDP/TCP 3478, and set `ICE_SERVERS` to your own TURN entry plus `FORCE_TURN=true` once verified, or
-  2. Use a managed TURN provider (e.g. Cloudflare Realtime TURN, Twilio NTS) and set `ICE_SERVERS` to their provided entries.
-- Setting `ICE_SERVERS` explicitly overrides the built-in default entirely - include your own STUN entry too if you still want one.
+- Create a free Metered TURN account, then copy the application name and API key into `METERED_TURN_APP_NAME` and `METERED_TURN_API_KEY` in Render. Chatika requests temporary credentials from the server; never put the API key in web or mobile code.
+- Metered's free tier includes 500 MB per month, so it is appropriate for beta testing but not a large video-call audience.
+- For production-grade reliability, deploy your own coturn server (for example on Oracle Always Free) or use a paid relay provider. Set `ICE_SERVERS` only when supplying your own relay entries.
 
 ## 9) Free-tier caveats
 - Render free web services sleep when idle (cold start).

@@ -107,7 +107,7 @@ To invite someone, select a room, enter their approved username in **Invite to r
 
 ### Reliable Audio and Video Calls
 
-For production calls across mobile networks, configure a TURN relay in Render. Add `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as service secrets. Chatika then generates short-lived ICE credentials on the server and gives each signed-in caller STUN plus TURN options. Do not expose either value in the web or mobile client. STUN-only connections can fail when a carrier NAT or firewall prevents direct peer-to-peer traffic.
+For beta calls across mobile networks, create a free Metered TURN account and add its `METERED_TURN_APP_NAME` and `METERED_TURN_API_KEY` as Render service secrets. Chatika fetches short-lived relay credentials on the server, so the key is never exposed to the web or mobile client. The free tier includes 500 MB per month and is intended for testing; use your own coturn server or a paid relay once usage grows. STUN-only connections can fail when a carrier NAT or firewall prevents direct peer-to-peer traffic.
 
 ## Free Hosting
 
