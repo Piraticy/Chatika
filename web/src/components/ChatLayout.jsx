@@ -6,6 +6,7 @@ import { avatarGradient, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, pre
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
+const VOICE_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
 
 function formatLastSeen(value) {
   if (!value) return 'Last seen recently';
@@ -248,15 +249,24 @@ export default function ChatLayout({
       return;
     }
     try {
+      const permission = await navigator.permissions?.query?.({ name: 'microphone' }).catch(() => null);
+      if (permission?.state === 'denied') {
+        setLocalError('Microphone access is blocked. Enable it in your browser settings to record a voice message.');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const requestedMimeType = VOICE_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported?.(mimeType));
+      const recorder = requestedMimeType ? new MediaRecorder(stream, { mimeType: requestedMimeType }) : new MediaRecorder(stream);
+      const roomId = activeRoomId;
       recorderChunksRef.current = [];
       recorderStreamRef.current = stream;
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => event.data.size && recorderChunksRef.current.push(event.data);
       recorder.onstop = () => {
-        const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        onSendMedia?.(new File([blob], `voice-message-${Date.now()}.webm`, { type: blob.type }), 'voice');
+        const mimeType = recorder.mimeType || requestedMimeType || 'audio/webm';
+        const blob = new Blob(recorderChunksRef.current, { type: mimeType });
+        const extension = voiceFileExtension(blob.type || mimeType);
+        onSendMedia?.(new File([blob], `voice-message-${Date.now()}.${extension}`, { type: blob.type || mimeType }), 'voice', roomId);
         stream.getTracks().forEach((track) => track.stop());
         recorderStreamRef.current = null;
         recorderRef.current = null;
@@ -289,7 +299,7 @@ export default function ChatLayout({
         <div className="sidebar-head">
           <button className="profile-button" type="button" onClick={() => { setAvatarPickerError(''); setAvatarPickerOpen(true); }} aria-label="Change profile picture"><Avatar user={me} size="large" /></button>
           <input ref={profileInputRef} className="file-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const [file] = event.target.files || []; if (file) onChangeProfilePhoto?.(file).catch((error) => setLocalError(error.message)); event.target.value = ''; }} />
-          <div className="identity"><h2>@{me.username}</h2><small>{statusText}</small></div>
+          <div className="identity"><h2>@{me.username}</h2>{isAdmin && <span className="profile-admin-badge">Chatika admin</span>}<small>{statusText}</small></div>
           <button className="icon-button sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation"><UiIcon name="close" /></button>
         </div>
 
@@ -345,7 +355,7 @@ export default function ChatLayout({
           <div className="thread-title-wrap">
             <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen((value) => !value)} aria-label={sidebarOpen ? 'Hide conversations' : 'Show conversations'} title={sidebarOpen ? 'Hide conversations' : 'Show conversations'}><UiIcon name="menu" /></button>
             {activeContact && <Avatar user={activeContact} size="thread" />}
-            <div><span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP' : 'PRIVATE CHAT') : 'CHATIKA'}</span><h2>{activeRoom ? roomLabel(activeRoom, me.id) : 'Your conversations'}</h2><small>{activePresenceText}</small></div>
+            <div><span className="eyebrow">{activeRoom ? (activeRoom.is_group ? 'GROUP' : 'PRIVATE CHAT') : 'CHATIKA'}</span><h2>{activeRoom ? roomLabel(activeRoom, me.id) : 'Your conversations'}{activeContact?.is_admin && <span className="conversation-admin-badge">Admin</span>}</h2><small>{activePresenceText}</small></div>
           </div>
           <div className="thread-actions">
             <button type="button" className={callActive ? 'call-button active' : 'call-button'} onClick={() => onStartCall?.('audio')} disabled={!activeRoomId} aria-label="Start audio call" title="Audio call"><UiIcon name="phone" /><span>Audio</span></button>
@@ -420,7 +430,7 @@ function ConversationButton({ room, me, active, unread, onClick }) {
       <Avatar user={room.is_group ? { username: room.name } : other} />
       <span className="conversation-item-body">
         <span className="conversation-item-top">
-          <strong>{roomLabel(room, me.id)}</strong>
+          <strong>{roomLabel(room, me.id)}{other?.is_admin && <span className="conversation-admin-badge">Admin</span>}</strong>
           {room.last_message_at && <time>{formatRelativeTime(room.last_message_at)}</time>}
         </span>
         <span className="conversation-item-bottom">
@@ -490,7 +500,7 @@ function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onR
     <span className="msg-sender">{message.sender_id === me.id ? 'You' : `@${message.sender_username || 'friend'}`}</span>
     {message.reply_to_id && <div className="reply-context"><span>↩ @{message.reply_to_sender_username || 'friend'}</span><small>{message.reply_to_text || 'Shared media'}</small></div>}
     {message.media_url && <MessageMedia message={message} />}
-    {message.text && <p>{renderText(message.text, message.id)}</p>}
+    {message.text && message.message_type !== 'voice' && <p>{renderText(message.text, message.id)}</p>}
     {actionOpen && <div className="message-action-menu" onClick={(event) => event.stopPropagation()}><button type="button" className="reply-action" onClick={() => onReply(message)}>↩ Reply</button>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
     {reactions.length > 0 && <div className="reaction-summary">{reactions.map(([emoji, users]) => <span key={emoji} className={users.includes(me.id) ? 'reaction-chip mine' : 'reaction-chip'}>{renderText(emoji, `${message.id}-${emoji}`)} {users.length}</span>)}</div>}
     <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} delivered={delivered} />}</div>
@@ -528,15 +538,74 @@ function MessageMedia({ message }) {
   const url = resolveMediaUrl(message.media_url);
   if (message.message_type === 'image') return <img className="message-image" src={url} alt={message.text || 'Shared image'} loading="lazy" />;
   if (message.message_type === 'video') return <video className="message-video" src={url} controls playsInline preload="metadata" />;
-  if (message.message_type === 'audio' || message.message_type === 'voice') return <audio className="message-audio" src={url} controls preload="metadata" />;
+  if (message.message_type === 'voice') return <VoiceMessage url={voicePlaybackUrl(url)} uploading={message.status === 'uploading'} />;
+  if (message.message_type === 'audio') return <audio className="message-audio" src={url} controls preload="metadata" />;
   return <a className="message-file" href={url} target="_blank" rel="noreferrer">Open shared file</a>;
+}
+
+function voicePlaybackUrl(url) {
+  if (!url || /^(?:blob|data):/i.test(url) || /[?&]mime_type=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}mime_type=audio%2Fwebm`;
+}
+
+function VoiceMessage({ url, uploading = false }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [error, setError] = useState(false);
+
+  async function togglePlayback() {
+    if (uploading) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch (_error) {
+        setError(true);
+      }
+    } else {
+      audio.pause();
+    }
+  }
+
+  return (
+    <div className="voice-message" aria-label="Voice message">
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0); }}
+        onError={() => setError(true)}
+      />
+      <button type="button" className="voice-play-button" onClick={togglePlayback} disabled={uploading} aria-label={uploading ? 'Sending voice message' : playing ? 'Pause voice message' : 'Play voice message'}>{uploading ? '…' : playing ? '❚❚' : '▶'}</button>
+      <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span>
+      <span className="voice-duration">{uploading ? 'Sending' : formatDuration(Math.floor(playing ? currentTime : duration || currentTime))}</span>
+      {error && <a href={url} target="_blank" rel="noreferrer" className="voice-open-link">Open</a>}
+    </div>
+  );
 }
 
 function MessageStatus({ read, delivered }) {
   const showSecondDot = read || delivered;
   return <span className={read ? 'message-status read' : 'message-status'}><i />{showSecondDot && <i />}</span>;
 }
-function formatDuration(seconds) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
+function voiceFileExtension(mimeType) {
+  const mime = String(mimeType || '').toLowerCase();
+  if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a';
+  if (mime.includes('ogg')) return 'ogg';
+  if (mime.includes('wav')) return 'wav';
+  return 'webm';
+}
+function formatDuration(seconds) {
+  const safeSeconds = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+  return `${Math.floor(safeSeconds / 60)}:${String(Math.floor(safeSeconds % 60)).padStart(2, '0')}`;
+}
 function renderText(text, keyPrefix) { return String(text || '').split(/(:chatika_[a-z]+:)/g).map((part, index) => { const emoji = findChatikaEmoji(part); return emoji ? <ChatikaEmoji key={`${keyPrefix}-${index}`} emoji={emoji} /> : part; }); }
 function ChatikaEmoji({ emoji }) { return <span className={`chatika-emoji ${emoji.variant}`} role="img" aria-label={emoji.label}>{emoji.glyph}</span>; }
 

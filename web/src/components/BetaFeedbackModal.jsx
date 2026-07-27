@@ -35,10 +35,10 @@ export default function BetaFeedbackModal({ open, submitting, error, onSubmit })
       <form className="feedback-modal" onSubmit={submit} aria-labelledby="feedback-title">
         <span className="feedback-beta">BETA FEEDBACK</span>
         <h2 id="feedback-title">Help shape Chatika</h2>
-        <p>Three quick answers. You will only see this once.</p>
+        <p>You have tried Chatika a few times. Three quick answers will help us improve the beta.</p>
 
         <fieldset>
-          <legend>How is your first experience?</legend>
+          <legend>How does Chatika feel after a few conversations?</legend>
           <div className="rating-row" aria-label="Rate your experience from one to five">
             {[1, 2, 3, 4, 5].map((value) => (
               <button key={value} type="button" className={rating === value ? 'selected' : ''} onClick={() => setRating(value)} aria-label={`${value} out of 5`}>{value}</button>
@@ -46,13 +46,13 @@ export default function BetaFeedbackModal({ open, submitting, error, onSubmit })
           </div>
         </fieldset>
 
-        <label>What do you like most?
+        <label>Which part is most useful so far?
           <select value={favoriteFeature} onChange={(event) => setFavoriteFeature(event.target.value)}>
             {FAVORITES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
 
-        <label>What should we improve first?
+        <label>What should we improve first for you?
           <select value={improvementArea} onChange={(event) => setImprovementArea(event.target.value)}>
             {IMPROVEMENTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>

@@ -6,6 +6,7 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
   const [resetInputs, setResetInputs] = useState({});
   const [resettingId, setResettingId] = useState('');
   const [resetFeedback, setResetFeedback] = useState({});
+  const [resetTargetId, setResetTargetId] = useState('');
 
   const analytics = useMemo(() => buildAnalytics(users), [users]);
   const feedbackAnalytics = useMemo(() => buildFeedbackAnalytics(feedback), [feedback]);
@@ -31,6 +32,8 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
     try {
       await onResetPassword(userId, newPassword);
       setResetInputs((prev) => ({ ...prev, [userId]: '' }));
+      setResetFeedback((prev) => ({ ...prev, [userId]: 'Password updated.' }));
+      setResetTargetId('');
     } catch (submitError) {
       setResetFeedback((prev) => ({ ...prev, [userId]: submitError.message || 'Could not reset the password.' }));
     } finally {
@@ -149,7 +152,7 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
         ) : (
           <div className="user-table" role="table" aria-label="Chatika users">
             {filteredUsers.map((user) => (
-              <article className="user-row" key={user.id}>
+              <article className="user-row compact" key={user.id}>
                 {(() => {
                   const preset = presetFromAvatarUrl(user.avatar_url);
                   if (user.avatar_url && !preset) return <img className="user-avatar" src={user.avatar_url} alt="" />;
@@ -175,10 +178,28 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
                 <div className="user-admin-actions">
                   <span className={user.is_approved ? 'account-status approved' : 'account-status pending'}>{user.is_approved ? 'Active' : 'Pending'}</span>
                   {user.is_admin ? <span className="admin-badge">Admin</span> : (
-                    <button className="user-action remove" type="button" onClick={() => onRemove(user.id, user.username)}>Remove</button>
+                    <>
+                      <button className="user-action icon-action reset" type="button" onClick={() => setResetTargetId((current) => current === user.id ? '' : user.id)} aria-label={`Reset @${user.username}'s password`} title="Reset password">⌁</button>
+                      <button className="user-action icon-action remove" type="button" onClick={() => onRemove(user.id, user.username)} aria-label={`Remove @${user.username}`} title="Remove user">×</button>
+                    </>
                   )}
-                  {!user.is_approved && <button className="user-action approve" type="button" onClick={() => onApprove(user.id)}>Approve</button>}
+                  {!user.is_approved && <button className="user-action icon-action approve" type="button" onClick={() => onApprove(user.id)} aria-label={`Approve @${user.username}`} title="Approve user">✓</button>}
                 </div>
+                {resetTargetId === user.id && (
+                  <div className="user-reset-inline">
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="New password (8+ characters)"
+                      minLength={8}
+                      value={resetInputs[user.id] || ''}
+                      onChange={(event) => setResetInputs((prev) => ({ ...prev, [user.id]: event.target.value }))}
+                    />
+                    <button className="user-action approve" type="button" disabled={(resetInputs[user.id] || '').trim().length < 8 || resettingId === user.id} onClick={() => submitReset(user.id)}>{resettingId === user.id ? 'Saving…' : 'Save'}</button>
+                    <button className="user-action icon-action" type="button" onClick={() => setResetTargetId('')} aria-label="Cancel password reset">×</button>
+                    {resetFeedback[user.id] && <small className="password-reset-error">{resetFeedback[user.id]}</small>}
+                  </div>
+                )}
               </article>
             ))}
           </div>

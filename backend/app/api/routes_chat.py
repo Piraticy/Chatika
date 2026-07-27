@@ -33,6 +33,7 @@ def _room_participants(db: Session, room_id: str) -> list[RoomParticipantOut]:
             id=user.id,
             username=user.username,
             avatar_url=user.avatar_url,
+            is_admin=user.is_admin,
             is_online=user.is_online,
             last_seen_at=user.last_seen_at,
         )
@@ -199,6 +200,7 @@ def discover_users(
                 country_code
                 and country_code in {user.last_country_code, user.signup_country_code}
             ),
+            is_admin=user.is_admin,
         )
         for user in users
     ]
@@ -376,6 +378,7 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
         participants = [
             RoomParticipantOut(
                 id=user.id, username=user.username, avatar_url=user.avatar_url,
+                is_admin=user.is_admin,
                 is_online=user.is_online, last_seen_at=user.last_seen_at,
             )
             for user_id in member_ids_by_room.get(room.id, [])

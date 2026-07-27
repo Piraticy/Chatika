@@ -159,7 +159,7 @@ def me(current_user: User = Depends(get_current_user), db: Session = Depends(get
         is_approved=current_user.is_approved,
         is_online=current_user.is_online,
         last_seen_at=current_user.last_seen_at,
-        needs_beta_feedback=current_user.beta_feedback_eligible and not has_feedback,
+        needs_beta_feedback=current_user.beta_feedback_eligible and current_user.beta_feedback_use_count >= 3 and not has_feedback,
     )
 
 

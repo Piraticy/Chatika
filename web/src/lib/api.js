@@ -53,7 +53,7 @@ export async function uploadFile(file, { token } = {}) {
 }
 
 export function resolveMediaUrl(mediaUrl) {
-  if (!mediaUrl || /^https?:\/\//i.test(mediaUrl) || !API_URL.startsWith('http')) return mediaUrl;
+  if (!mediaUrl || /^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(mediaUrl) || /^(?:blob|data):/i.test(mediaUrl) || !API_URL.startsWith('http')) return mediaUrl;
   return `${new URL(API_URL).origin}${mediaUrl}`;
 }
 

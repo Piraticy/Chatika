@@ -26,6 +26,7 @@ class RoomParticipantOut(BaseModel):
     id: str
     username: str
     avatar_url: Optional[str] = None
+    is_admin: bool = False
     is_online: bool
     last_seen_at: Optional[datetime] = None
 
@@ -34,6 +35,7 @@ class DiscoverUserOut(BaseModel):
     id: str
     username: str
     avatar_url: Optional[str] = None
+    is_admin: bool = False
     is_online: bool
     last_seen_at: Optional[datetime] = None
     is_nearby: bool = False

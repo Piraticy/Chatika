@@ -99,6 +99,7 @@ export default function App() {
   const iceTransportPolicyRef = useRef('all');
   const readReceiptTimerRef = useRef(null);
   const refreshPromiseRef = useRef(null);
+  const feedbackUsageRef = useRef('');
   const socketHandlersRef = useRef({ onEvent: () => {}, onOpen: () => {} });
 
   const isAuthed = Boolean(token && me);
@@ -119,31 +120,32 @@ export default function App() {
   }, [notificationStatus]);
 
   useEffect(() => {
-    // Warm the free-tier backend early to reduce first interactive wait on mobile.
     fetch(`${API_URL}/health`).catch(() => undefined);
   }, []);
 
   async function hydrateSession(currentToken) {
-    // /auth/me and /chat/rooms don't depend on each other - only /admin/pending-users
-    // needs to know the resolved user first. Fetching sequentially doubled the
-    // wait on every cold start.
     const [meData, roomData] = await Promise.all([
       api('/auth/me', { token: currentToken }),
       api('/chat/rooms', { token: currentToken })
     ]);
-    setMe(meData);
+    let resolvedMe = meData;
+    if (feedbackUsageRef.current !== meData.id) {
+      feedbackUsageRef.current = meData.id;
+      try {
+        const usage = await api('/feedback/usage', { method: 'POST', token: currentToken });
+        resolvedMe = { ...meData, needs_beta_feedback: usage.needs_beta_feedback };
+      } catch (_error) {}
+    }
+    setMe(resolvedMe);
     setRooms(roomData);
 
-    // A push notification deep-links here as /?room=<id> (see routes_chat.py /
-    // routes_presence_ws.py) - honor it once, then drop it from the URL so a
-    // later refresh doesn't keep forcing that room open.
     const deepLinkRoomId = new URLSearchParams(window.location.search).get('room');
     const validDeepLink = deepLinkRoomId && roomData.some((room) => room.id === deepLinkRoomId);
     setActiveRoomId(validDeepLink ? deepLinkRoomId : '');
     setMessages([]);
     if (deepLinkRoomId) window.history.replaceState(null, '', window.location.pathname);
 
-    if (canUseAdmin(meData)) {
+    if (canUseAdmin(resolvedMe)) {
       const pending = await api('/admin/pending-users', { token: currentToken });
       setPendingUsers(pending);
     }
@@ -553,26 +555,46 @@ export default function App() {
     }
   }
 
-  async function sendMedia(file, requestedType) {
-    if (!activeRoomId || !file) return;
+  async function sendMedia(file, requestedType, targetRoomId = activeRoomId) {
+    if (!targetRoomId || !file) return;
+    const messageType = requestedType || (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file');
+    const localId = `local-media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const localUrl = URL.createObjectURL(file);
+    const optimisticMessage = {
+      id: localId,
+      room_id: targetRoomId,
+      sender_id: me.id,
+      sender_username: me.username,
+      message_type: messageType,
+      is_encrypted: false,
+      reaction_users: {},
+      text: requestedType === 'voice' ? 'Voice message' : file.name,
+      media_url: localUrl,
+      created_at: new Date().toISOString(),
+      status: 'uploading'
+    };
     setMediaError('');
+    setMessages((prev) => [optimisticMessage, ...prev]);
+    updateRoomPreview(optimisticMessage);
     try {
       const uploaded = await authedUpload(file, { token });
-      const messageType = requestedType || (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file');
       const sent = await authedApi('/chat/messages', {
         method: 'POST',
         token,
         body: {
-          room_id: activeRoomId,
+          room_id: targetRoomId,
           text: requestedType === 'voice' ? 'Voice message' : file.name,
-          message_type: requestedType || messageType,
+          message_type: messageType,
           media_url: uploaded.media_url
         }
       });
-      setMessages((prev) => [sent, ...prev.filter((message) => message.id !== sent.id)]);
+      setMessages((prev) => prev.map((message) => (message.id === localId ? { ...sent, status: 'sent' } : message)));
+      URL.revokeObjectURL(localUrl);
       updateRoomPreview(sent);
     } catch (error) {
-      setMediaError(error.message || 'Unable to send this media.');
+      setMessages((prev) => prev.filter((message) => message.id !== localId));
+      URL.revokeObjectURL(localUrl);
+      setMediaError(error.message || 'Unable to send this media. Check your connection and try again.');
     }
   }
 
@@ -1416,9 +1438,12 @@ function canUseAdmin(user) {
 function StartupScreen() {
   return (
     <main className="startup-screen" aria-label="Chatika is starting">
-      <img src="/logo.svg" alt="" />
-      <strong>Chatika</strong>
-      <span>Opening your conversations…</span>
+      <section className="startup-card">
+        <img src="/logo.svg" alt="" />
+        <span className="startup-eyebrow">PRIVATE, FAST, YOURS</span>
+        <strong>Chatika</strong>
+        <p>Your conversations are getting ready.</p>
+      </section>
       <i aria-hidden="true"><b /><b /><b /></i>
     </main>
   );

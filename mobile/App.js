@@ -105,6 +105,7 @@ export default function App() {
   const messageListRef = useRef(null);
   const restoredPositionsRef = useRef(new Set());
   const refreshPromiseRef = useRef(null);
+  const feedbackUsageRef = useRef('');
   const { width } = useWindowDimensions();
   const compact = width < 380;
 
@@ -174,7 +175,15 @@ export default function App() {
 
   async function hydrate(currentToken) {
     const meData = await api('/auth/me', { token: currentToken });
-    setMe(meData);
+    let resolvedMe = meData;
+    if (feedbackUsageRef.current !== meData.id) {
+      feedbackUsageRef.current = meData.id;
+      try {
+        const usage = await api('/feedback/usage', { method: 'POST', token: currentToken });
+        resolvedMe = { ...meData, needs_beta_feedback: usage.needs_beta_feedback };
+      } catch (_error) {}
+    }
+    setMe(resolvedMe);
 
     const roomData = await api('/chat/rooms', { token: currentToken });
     setRooms(roomData);
@@ -591,16 +600,16 @@ export default function App() {
           <ScrollView contentContainerStyle={styles.feedbackModal} keyboardShouldPersistTaps="handled">
             <Text style={styles.feedbackBeta}>BETA FEEDBACK</Text>
             <Text style={styles.feedbackTitle}>Help shape Chatika</Text>
-            <Text style={styles.feedbackIntro}>Three quick answers. You will only see this once.</Text>
-            <Text style={styles.feedbackLabel}>How is your first experience?</Text>
+            <Text style={styles.feedbackIntro}>You have tried Chatika a few times. Three quick answers will help us improve the beta.</Text>
+            <Text style={styles.feedbackLabel}>How does Chatika feel after a few conversations?</Text>
             <View style={styles.feedbackOptions}>
               {[1, 2, 3, 4, 5].map((rating) => <TouchableOpacity key={rating} onPress={() => setFeedbackForm((current) => ({ ...current, rating }))} style={[styles.feedbackChoice, feedbackForm.rating === rating && styles.feedbackChoiceActive]}><Text style={styles.feedbackChoiceText}>{rating}</Text></TouchableOpacity>)}
             </View>
-            <Text style={styles.feedbackLabel}>What do you like most?</Text>
+            <Text style={styles.feedbackLabel}>Which part is most useful so far?</Text>
             <View style={styles.feedbackWrapOptions}>
               {[['messaging', 'Messaging'], ['calls', 'Calls'], ['media', 'Media'], ['design', 'Design'], ['speed', 'Speed']].map(([value, label]) => <TouchableOpacity key={value} onPress={() => setFeedbackForm((current) => ({ ...current, favorite_feature: value }))} style={[styles.feedbackPill, feedbackForm.favorite_feature === value && styles.feedbackPillActive]}><Text style={styles.feedbackPillText}>{label}</Text></TouchableOpacity>)}
             </View>
-            <Text style={styles.feedbackLabel}>What should we improve first?</Text>
+            <Text style={styles.feedbackLabel}>What should we improve first for you?</Text>
             <View style={styles.feedbackWrapOptions}>
               {[['reliability', 'Reliability'], ['calls', 'Calls'], ['mobile_ui', 'Mobile layout'], ['notifications', 'Notifications'], ['other', 'Other']].map(([value, label]) => <TouchableOpacity key={value} onPress={() => setFeedbackForm((current) => ({ ...current, improvement_area: value }))} style={[styles.feedbackPill, feedbackForm.improvement_area === value && styles.feedbackPillActive]}><Text style={styles.feedbackPillText}>{label}</Text></TouchableOpacity>)}
             </View>
