@@ -19,6 +19,7 @@ from app.api.routes_media import router as media_router
 from app.api.routes_presence_ws import router as realtime_router
 from app.api.routes_push import router as push_router
 from app.api.routes_realtime_config import router as realtime_config_router
+from app.api.routes_status import router as status_router
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.base import Base
@@ -95,6 +96,7 @@ async def on_shutdown() -> None:
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(chat_router, prefix=settings.api_prefix)
+app.include_router(status_router, prefix=settings.api_prefix)
 app.include_router(feedback_router, prefix=settings.api_prefix)
 app.include_router(media_router, prefix=settings.api_prefix)
 app.include_router(backup_router, prefix=settings.api_prefix)

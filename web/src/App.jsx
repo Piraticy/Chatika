@@ -40,6 +40,7 @@ export default function App() {
 
   const [me, setMe] = useState(null);
   const [rooms, setRooms] = useState([]);
+  const [statuses, setStatuses] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
   const [readByMessage, setReadByMessage] = useState({});
@@ -138,6 +139,7 @@ export default function App() {
     }
     setMe(resolvedMe);
     setRooms(roomData);
+    api('/status', { token: currentToken }).then(setStatuses).catch(() => setStatuses([]));
 
     const deepLinkRoomId = new URLSearchParams(window.location.search).get('room');
     const validDeepLink = deepLinkRoomId && roomData.some((room) => room.id === deepLinkRoomId);
@@ -305,6 +307,12 @@ export default function App() {
           });
         } else if (evt.event === 'room:invite' && evt.data?.room) {
           setRooms((prev) => [evt.data.room, ...prev.filter((room) => room.id !== evt.data.room.id)]);
+        } else if (evt.event === 'status:new' && evt.data?.id) {
+          setStatuses((prev) => {
+            const official = prev.filter((status) => status.is_official);
+            const otherStatuses = prev.filter((status) => !status.is_official && status.author_id !== evt.data.author_id && status.id !== evt.data.id);
+            return [...official, evt.data, ...otherStatuses];
+          });
         } else if (evt.event === 'message:reaction' && evt.data.room_id === activeRoomId) {
           setMessages((prev) =>
             prev.map((msg) => (msg.id === evt.data.message_id ? { ...msg, reaction_users: evt.data.reaction_users || {} } : msg))
@@ -437,6 +445,29 @@ export default function App() {
     });
     setRooms((prev) => [room, ...prev.filter((item) => item.id !== room.id)]);
     setActiveRoomId(room.id);
+  }
+
+  async function postStatus({ text, file }) {
+    let mediaUrl = null;
+    if (file) {
+      const uploaded = await authedUpload(file, { token });
+      mediaUrl = uploaded.media_url;
+    }
+    const status = await authedApi('/status', {
+      method: 'POST',
+      token,
+      body: { text: text || null, media_url: mediaUrl }
+    });
+    setStatuses((prev) => {
+      const official = prev.filter((item) => item.is_official);
+      const others = prev.filter((item) => !item.is_official && item.author_id !== status.author_id);
+      return [...official, status, ...others];
+    });
+    return status;
+  }
+
+  async function loadCallHistory() {
+    return authedApi('/chat/call-history?limit=60', { token });
   }
 
   async function updateProfilePhoto(file) {
@@ -888,7 +919,7 @@ export default function App() {
     return peer;
   }
 
-  async function startCall(kind) {
+  async function startCall(kind, targetRoomId = activeRoomId) {
     if (callActive || incomingCall) {
       setCallError('Finish or decline your current call first.');
       return;
@@ -900,6 +931,10 @@ export default function App() {
     }
     if (!window.isSecureContext) {
       setCallError('Calls require a secure HTTPS connection. Open the hosted Chatika address, not HTTP.');
+      return;
+    }
+    if (!targetRoomId) {
+      setCallError('Choose a conversation before starting a call.');
       return;
     }
 
@@ -924,16 +959,16 @@ export default function App() {
       setCallActive(true);
       setCallDialogOpen(true);
       callInitiatorRef.current = true;
-      callRoomIdRef.current = activeRoomId;
+      callRoomIdRef.current = targetRoomId;
       callConnectedAtRef.current = null;
       callLoggedRef.current = false;
 
-      const participants = (rooms.find((room) => room.id === activeRoomId)?.participant_ids || []).filter((id) => id !== me.id);
+      const participants = (rooms.find((room) => room.id === targetRoomId)?.participant_ids || []).filter((id) => id !== me.id);
       await Promise.all(participants.map(async (userId) => {
-        const peer = await createCallPeerConnection(userId, kind, activeRoomId);
+        const peer = await createCallPeerConnection(userId, kind, targetRoomId);
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
-        sendCallSignal(userId, { type: 'call-offer', kind, description: offer }, activeRoomId);
+        sendCallSignal(userId, { type: 'call-offer', kind, description: offer }, targetRoomId);
       }));
     } catch (error) {
       const message = error.name !== 'AbortError' && error.name !== 'NotAllowedError'
@@ -1262,24 +1297,28 @@ export default function App() {
   const statusText = 'Online now';
   const typingUsers = useMemo(() => Object.keys(typingByRoom[activeRoomId] || {}), [typingByRoom, activeRoomId]);
   const activeRoom = useMemo(() => rooms.find((room) => room.id === activeRoomId) || null, [rooms, activeRoomId]);
+  const callRoom = useMemo(
+    () => rooms.find((room) => room.id === (callRoomIdRef.current || activeRoomId)) || activeRoom,
+    [rooms, activeRoomId, activeRoom, callActive, incomingCall]
+  );
   const callParticipantNames = useMemo(
-    () => Object.fromEntries((activeRoom?.participants || []).map((participant) => [participant.id, participant.username])),
-    [activeRoom]
+    () => Object.fromEntries((callRoom?.participants || []).map((participant) => [participant.id, participant.username])),
+    [callRoom]
   );
   const callParticipantProfiles = useMemo(
-    () => Object.fromEntries((activeRoom?.participants || []).map((participant) => [participant.id, participant])),
-    [activeRoom]
+    () => Object.fromEntries((callRoom?.participants || []).map((participant) => [participant.id, participant])),
+    [callRoom]
   );
   const callTargetProfile = useMemo(
-    () => (activeRoom?.participants || []).find((participant) => participant.id !== me?.id) || null,
-    [activeRoom, me?.id]
+    () => (callRoom?.participants || []).find((participant) => participant.id !== me?.id) || null,
+    [callRoom, me?.id]
   );
   const callTargetLabel = useMemo(() => {
-    const others = (activeRoom?.participants || []).filter((participant) => participant.id !== me?.id);
+    const others = (callRoom?.participants || []).filter((participant) => participant.id !== me?.id);
     if (!others.length) return 'room participants';
-    if (!activeRoom?.is_group && others[0]?.username) return `@${others[0].username}`;
+    if (!callRoom?.is_group && others[0]?.username) return `@${others[0].username}`;
     return `${others.length} participant${others.length === 1 ? '' : 's'}`;
-  }, [activeRoom, me?.id]);
+  }, [callRoom, me?.id]);
 
   if (!sessionReady) {
     return <StartupScreen />;
@@ -1320,6 +1359,7 @@ export default function App() {
         readByMessage={readByMessage}
         deliveredByMessage={deliveredByMessage}
         unreadCounts={unreadCounts}
+        statuses={statuses}
         onSelectRoom={(roomId) => {
           setActiveRoomId(roomId);
           setUnreadCounts((prev) => (prev[roomId] ? { ...prev, [roomId]: 0 } : prev));
@@ -1349,7 +1389,7 @@ export default function App() {
         dataSaver={dataSaver}
         onToggleDataSaver={() => setDataSaver((value) => !value)}
         callActive={callActive}
-        onStartCall={(kind) => {
+        onStartCall={(kind, roomId) => {
           if (callActive || incomingCall) {
             setCallError('Finish or decline your current call first.');
             setCallDialogOpen(true);
@@ -1357,8 +1397,10 @@ export default function App() {
           }
           setCallError('');
           setCallDialogOpen(true);
-          if (kind) startCall(kind);
+          if (kind) startCall(kind, roomId);
         }}
+        onPostStatus={postStatus}
+        onLoadCallHistory={loadCallHistory}
         shareActive={shareActive}
         onShareScreen={() => {
           setShareError('');

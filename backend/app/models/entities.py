@@ -86,6 +86,15 @@ class Message(Base, UUIDTimeMixin):
     media_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
 
+class StatusUpdate(Base, UUIDTimeMixin):
+    __tablename__ = 'status_updates'
+
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    media_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class MediaPreference(Base, UUIDTimeMixin):
     __tablename__ = 'media_preferences'
     __table_args__ = (UniqueConstraint('user_id', name='uq_media_pref_user'),)

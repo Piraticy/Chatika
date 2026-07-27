@@ -86,3 +86,12 @@ class MessageOut(BaseModel):
 class MessageReactionInput(BaseModel):
     room_id: str
     emoji: str = Field(min_length=1, max_length=24)
+
+
+class CallHistoryOut(BaseModel):
+    id: str
+    room_id: str
+    sender_id: str
+    sender_username: Optional[str] = None
+    text: Optional[str] = None
+    created_at: datetime

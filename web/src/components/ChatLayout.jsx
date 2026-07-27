@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
+import ChatHub from './ChatHub';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 import { resolveMediaUrl } from '../lib/api';
 import { avatarGradient, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
@@ -78,7 +79,10 @@ export default function ChatLayout({
   callActive,
   onStartCall,
   shareActive,
-  onShareScreen
+  onShareScreen,
+  statuses,
+  onPostStatus,
+  onLoadCallHistory
 }) {
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || null;
   const activeOthers = useMemo(
@@ -99,6 +103,7 @@ export default function ChatLayout({
   const fileInputRef = useRef(null);
   const profileInputRef = useRef(null);
   const recorderRef = useRef(null);
+  const edgeSwipeRef = useRef(null);
   const recorderChunksRef = useRef([]);
   const recorderStreamRef = useRef(null);
   const [draft, setDraft] = useState('');
@@ -152,6 +157,20 @@ export default function ChatLayout({
   function selectConversation(roomId) {
     onSelectRoom(roomId);
     if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
+  }
+
+  function beginThreadEdgeSwipe(event) {
+    if (!activeRoom || !window.matchMedia('(max-width: 720px)').matches || event.clientX > 28) return;
+    edgeSwipeRef.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function endThreadEdgeSwipe(event) {
+    const start = edgeSwipeRef.current;
+    edgeSwipeRef.current = null;
+    if (!start) return;
+    if (event.clientX - start.x > 84 && Math.abs(event.clientY - start.y) < 70) {
+      onSelectRoom('');
+    }
   }
 
   async function submitDirect(event) {
@@ -350,7 +369,30 @@ export default function ChatLayout({
         <div className="sidebar-foot"><span>{APP_CREDIT} · {APP_VERSION}</span><button type="button" onClick={onLogout}>Log out</button></div>
       </aside>
 
-      <main className="thread glass">
+      <main className={activeRoom ? 'thread glass' : 'thread glass hub-thread'} onPointerDown={beginThreadEdgeSwipe} onPointerUp={endThreadEdgeSwipe} onPointerCancel={() => { edgeSwipeRef.current = null; }}>
+        {!activeRoom ? (
+          <ChatHub
+            me={me}
+            rooms={rooms}
+            unreadCounts={unreadCounts}
+            statuses={statuses}
+            onSelectRoom={selectConversation}
+            onStartDirect={onStartDirect}
+            onDiscoverFriends={onDiscoverFriends}
+            onCreateGroup={onCreateGroup}
+            onPostStatus={onPostStatus}
+            onLoadCallHistory={onLoadCallHistory}
+            onStartCall={onStartCall}
+            onOpenSidebar={() => setSidebarOpen(true)}
+            notificationStatus={notificationStatus}
+            onEnableNotifications={onEnableNotifications}
+            dataSaver={dataSaver}
+            onToggleDataSaver={onToggleDataSaver}
+            onLogout={onLogout}
+            onOpenAdmin={onOpenAdmin}
+            isAdmin={isAdmin}
+          />
+        ) : <>
         <header className="thread-head">
           <div className="thread-title-wrap">
             <button className="icon-button menu-trigger" type="button" onClick={() => setSidebarOpen((value) => !value)} aria-label={sidebarOpen ? 'Hide conversations' : 'Show conversations'} title={sidebarOpen ? 'Hide conversations' : 'Show conversations'}><UiIcon name="menu" /></button>
@@ -382,6 +424,7 @@ export default function ChatLayout({
           {recording && <div className="recording-preview"><span className="recording-indicator" /><strong>Recording {formatDuration(recordingSeconds)}</strong><span className="recording-wave">▂▅▃▆▄▇▃▅▂</span><button type="button" onClick={toggleRecording}>Stop</button></div>}
           {(localError || mediaError) && <div className="composer-error">{localError || mediaError}</div>}
         </div>
+        </>}
       </main>
 
       {avatarPickerOpen && (

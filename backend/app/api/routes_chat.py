@@ -10,7 +10,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
-from app.schemas.chat import CreateGroupInput, CreateRoomInput, DiscoverUserOut, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
+from app.schemas.chat import CallHistoryOut, CreateGroupInput, CreateRoomInput, DiscoverUserOut, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
 
@@ -407,6 +407,37 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     # with no messages yet (last_message_at is None) sort to the bottom.
     room_outs.sort(key=lambda room: room.last_message_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return room_outs
+
+
+@router.get('/call-history', response_model=list[CallHistoryOut])
+def list_call_history(
+    limit: int = 60,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[CallHistoryOut]:
+    safe_limit = max(1, min(limit, 100))
+    rows = db.execute(
+        select(Message, User)
+        .join(ChatRoomMember, ChatRoomMember.room_id == Message.room_id)
+        .join(User, User.id == Message.sender_id)
+        .where(
+            ChatRoomMember.user_id == current_user.id,
+            Message.message_type == 'call_log',
+        )
+        .order_by(Message.created_at.desc())
+        .limit(safe_limit)
+    ).all()
+    return [
+        CallHistoryOut(
+            id=message.id,
+            room_id=message.room_id,
+            sender_id=message.sender_id,
+            sender_username=sender.username,
+            text=message.text,
+            created_at=message.created_at,
+        )
+        for message, sender in rows
+    ]
 
 
 @router.post('/messages', response_model=MessageOut)
