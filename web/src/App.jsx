@@ -37,6 +37,7 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(localStorage.getItem(REFRESH_KEY) || '');
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionRetry, setSessionRetry] = useState(0);
+  const [startupError, setStartupError] = useState('');
 
   const [me, setMe] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -164,8 +165,9 @@ export default function App() {
     if (deepLinkRoomId) window.history.replaceState(null, '', window.location.pathname);
 
     if (canUseAdmin(resolvedMe)) {
-      const pending = await api('/admin/pending-users', { token: currentToken });
-      setPendingUsers(pending);
+      api('/admin/pending-users', { token: currentToken })
+        .then(setPendingUsers)
+        .catch(() => setPendingUsers([]));
     }
   }
 
@@ -236,20 +238,21 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    let retryTimer;
     if (!token) {
       if (refreshToken) {
         setSessionReady(false);
+        setStartupError('');
         tryRefresh()
           .then((restored) => {
             if (active && !restored) setSessionReady(true);
           })
           .catch(() => {
-            if (active) retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+            if (!active) return;
+            setStartupError('We could not reconnect to Chatika. Check your connection, then try again.');
+            setSessionReady(true);
           });
         return () => {
           active = false;
-          window.clearTimeout(retryTimer);
         };
       }
       const startupDelay = window.setTimeout(() => {
@@ -262,6 +265,7 @@ export default function App() {
     }
 
     setSessionReady(false);
+    setStartupError('');
     (async () => {
       try {
         await hydrateSession(token);
@@ -276,16 +280,18 @@ export default function App() {
             setSessionReady(true);
           }
           if (active && !restored && sessionError.status !== 401 && sessionError.status !== 403) {
-            retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+            setStartupError('We could not reconnect to Chatika. Check your connection, then try again.');
+            setSessionReady(true);
           }
         } catch (_refreshError) {
-          if (active) retryTimer = window.setTimeout(() => setSessionRetry((value) => value + 1), 2200);
+          if (!active) return;
+          setStartupError('We could not reconnect to Chatika. Check your connection, then try again.');
+          setSessionReady(true);
         }
       }
     })();
     return () => {
       active = false;
-      window.clearTimeout(retryTimer);
     };
   }, [token, refreshToken, sessionRetry]);
 
@@ -1343,8 +1349,12 @@ export default function App() {
     return `${others.length} participant${others.length === 1 ? '' : 's'}`;
   }, [callRoom, me?.id]);
 
-  if (!sessionReady) {
-    return <StartupScreen />;
+  if (!sessionReady || (startupError && !me && Boolean(token || refreshToken))) {
+    return <StartupScreen error={startupError} onRetry={() => {
+      setStartupError('');
+      setSessionReady(false);
+      setSessionRetry((value) => value + 1);
+    }} />;
   }
 
   if (!isAuthed) {
@@ -1501,16 +1511,17 @@ function canUseAdmin(user) {
   return Boolean(user?.is_admin && user.username?.toLowerCase() === 'piraticy');
 }
 
-function StartupScreen() {
+function StartupScreen({ error = '', onRetry }) {
   return (
     <main className="startup-screen" aria-label="Chatika is starting">
       <section className="startup-card">
         <img src="/logo.svg" alt="" />
         <span className="startup-eyebrow">PRIVATE, FAST, YOURS</span>
         <strong>Chatika</strong>
-        <p>Your conversations are getting ready.</p>
+        <p className={error ? 'startup-error' : ''}>{error || 'Your conversations are getting ready.'}</p>
+        {error ? <button type="button" onClick={onRetry}>Try again</button> : null}
       </section>
-      <i aria-hidden="true"><b /><b /><b /></i>
+      {!error && <i aria-hidden="true"><b /><b /><b /></i>}
     </main>
   );
 }

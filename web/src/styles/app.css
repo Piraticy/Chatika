@@ -937,6 +937,9 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 .startup-card .startup-eyebrow { color: #1198a4; margin-top: 7px; font-size: .58rem; font-weight: 900; letter-spacing: .17em; }
 .startup-card strong { margin: 0; color: var(--ink); font-size: 1.45rem; letter-spacing: -.055em; }
 .startup-card p { color: var(--muted); margin: 0; font-size: .74rem; }
+.startup-card .startup-error { color: #b55343; line-height: 1.45; }
+.startup-card button { margin-top: 7px; border: 0; border-radius: 999px; padding: 10px 18px; color: #fff; background: var(--ink); box-shadow: 0 10px 22px rgba(10, 18, 33, .18); font: inherit; font-size: .76rem; font-weight: 800; cursor: pointer; }
+.startup-card button:active { transform: translateY(1px); }
 
 .profile-admin-badge, .conversation-admin-badge { display: inline-flex; align-items: center; border-radius: 999px; color: #7447a0; background: #f0e6ff; font-size: .52rem; font-weight: 900; letter-spacing: .03em; line-height: 1; text-transform: uppercase; }
 .profile-admin-badge { width: fit-content; margin: 0 0 4px; padding: 4px 6px; }

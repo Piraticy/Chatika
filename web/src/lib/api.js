@@ -1,7 +1,26 @@
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function requestWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    const message = controller.signal.aborted
+      ? 'Chatika is taking too long to respond. Please try again.'
+      : 'Chatika could not be reached. Check your connection and try again.';
+    const requestError = new Error(message);
+    requestError.status = 0;
+    throw requestError;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 export async function api(path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await requestWithTimeout(`${API_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -30,7 +49,7 @@ export async function api(path, { method = 'GET', token, body } = {}) {
 export async function uploadFile(file, { token } = {}) {
   const formData = new FormData();
   formData.append('file', file, file.name || 'chatika-media');
-  const res = await fetch(`${API_URL}/media/upload`, {
+  const res = await requestWithTimeout(`${API_URL}/media/upload`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData
