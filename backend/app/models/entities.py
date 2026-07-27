@@ -28,6 +28,7 @@ class User(Base, UUIDTimeMixin):
     last_device: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     beta_feedback_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
     beta_feedback_use_count: Mapped[int] = mapped_column(Integer, default=0)
+    beta_feedback_available_after: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     password_reset_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

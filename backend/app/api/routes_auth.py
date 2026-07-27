@@ -74,6 +74,18 @@ def _token_pair(db: Session, user: User, device_name: str) -> TokenPair:
     return TokenPair(access_token=access, refresh_token=refresh)
 
 
+def _feedback_is_due(current_user: User, db: Session) -> bool:
+    if is_designated_admin(current_user) or not current_user.beta_feedback_eligible or current_user.beta_feedback_use_count < 10:
+        return False
+    available_after = current_user.beta_feedback_available_after
+    if available_after:
+        if available_after.tzinfo is None:
+            available_after = available_after.replace(tzinfo=timezone.utc)
+        if available_after > datetime.now(timezone.utc):
+            return False
+    return db.scalar(select(BetaFeedback.id).where(BetaFeedback.user_id == current_user.id)) is None
+
+
 @router.post('/register', response_model=TokenPair)
 def register(data: RegisterInput, request: Request, db: Session = Depends(get_db)) -> TokenPair:
     existing_filters = [User.username == data.username]
@@ -83,13 +95,14 @@ def register(data: RegisterInput, request: Request, db: Session = Depends(get_db
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username already exists')
 
+    is_admin = data.username.casefold() == ADMIN_USERNAME
     user = User(
         username=data.username,
         phone_number=data.phone_number,
         password_hash=hash_password(data.password),
-        is_admin=data.username.casefold() == ADMIN_USERNAME,
+        is_admin=is_admin,
         is_approved=True,
-        beta_feedback_eligible=True,
+        beta_feedback_eligible=not is_admin,
     )
     _apply_client_context(user, data, request, signup=True)
     db.add(user)
@@ -147,9 +160,6 @@ def logout(data: LogoutInput, db: Session = Depends(get_db)) -> dict:
 
 @router.get('/me', response_model=UserMe)
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> UserMe:
-    has_feedback = False
-    if current_user.beta_feedback_eligible:
-        has_feedback = db.scalar(select(BetaFeedback.id).where(BetaFeedback.user_id == current_user.id)) is not None
     return UserMe(
         id=current_user.id,
         username=current_user.username,
@@ -159,7 +169,7 @@ def me(current_user: User = Depends(get_current_user), db: Session = Depends(get
         is_approved=current_user.is_approved,
         is_online=current_user.is_online,
         last_seen_at=current_user.last_seen_at,
-        needs_beta_feedback=current_user.beta_feedback_eligible and current_user.beta_feedback_use_count >= 3 and not has_feedback,
+        needs_beta_feedback=_feedback_is_due(current_user, db),
     )
 
 

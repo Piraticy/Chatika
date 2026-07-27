@@ -35,10 +35,10 @@ export default function BetaFeedbackModal({ open, submitting, error, onSubmit })
       <form className="feedback-modal" onSubmit={submit} aria-labelledby="feedback-title">
         <span className="feedback-beta">BETA FEEDBACK</span>
         <h2 id="feedback-title">Help shape Chatika</h2>
-        <p>You have tried Chatika a few times. Three quick answers will help us improve the beta.</p>
+        <p>You have spent time with Chatika. Three quick answers will help us improve the beta.</p>
 
         <fieldset>
-          <legend>How does Chatika feel after a few conversations?</legend>
+          <legend>How does Chatika feel after using it for a while?</legend>
           <div className="rating-row" aria-label="Rate your experience from one to five">
             {[1, 2, 3, 4, 5].map((value) => (
               <button key={value} type="button" className={rating === value ? 'selected' : ''} onClick={() => setRating(value)} aria-label={`${value} out of 5`}>{value}</button>

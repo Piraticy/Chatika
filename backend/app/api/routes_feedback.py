@@ -1,24 +1,38 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_designated_admin
 from app.db.session import get_db
 from app.models.entities import BetaFeedback, User
 from app.schemas.feedback import BetaFeedbackInput
 
 router = APIRouter(prefix='/feedback', tags=['feedback'])
 
+MIN_BETA_FEEDBACK_USES = 10
+
 
 def _feedback_is_available(current_user: User, db: Session) -> bool:
-    if not current_user.beta_feedback_eligible or current_user.beta_feedback_use_count < 3:
+    if (
+        is_designated_admin(current_user)
+        or not current_user.beta_feedback_eligible
+        or current_user.beta_feedback_use_count < MIN_BETA_FEEDBACK_USES
+    ):
         return False
+    available_after = current_user.beta_feedback_available_after
+    if available_after:
+        if available_after.tzinfo is None:
+            available_after = available_after.replace(tzinfo=timezone.utc)
+        if available_after > datetime.now(timezone.utc):
+            return False
     return db.scalar(select(BetaFeedback.id).where(BetaFeedback.user_id == current_user.id)) is None
 
 
 @router.post('/usage')
 def record_beta_usage(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
-    if not current_user.beta_feedback_eligible:
+    if is_designated_admin(current_user) or not current_user.beta_feedback_eligible:
         return {'needs_beta_feedback': False, 'uses': current_user.beta_feedback_use_count}
 
     if db.scalar(select(BetaFeedback.id).where(BetaFeedback.user_id == current_user.id)) is None:
@@ -42,7 +56,7 @@ def submit_beta_feedback(
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Feedback already submitted')
     if not _feedback_is_available(current_user, db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Feedback is available after three Chatika sessions')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f'Feedback is available after {MIN_BETA_FEEDBACK_USES} Chatika sessions')
 
     feedback = BetaFeedback(
         user_id=current_user.id,

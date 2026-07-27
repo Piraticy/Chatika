@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { avatarGradient, avatarInitial, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 
-export default function AdminPanel({ open, users = [], feedback = [], passwordResetRequests = [], loading, error, onClose, onRefresh, onApprove, onRemove, onResetPassword }) {
+export default function AdminPanel({ open, users = [], feedback = [], passwordResetRequests = [], loading, error, onClose, onRefresh, onApprove, onRemove, onResetPassword, onResetFeedback }) {
   const [query, setQuery] = useState('');
   const [resetInputs, setResetInputs] = useState({});
   const [resettingId, setResettingId] = useState('');
@@ -83,7 +83,7 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
         </div>
 
         <section className="admin-feedback-card">
-          <div className="admin-insight-title"><strong>Beta feedback</strong><span>{feedback.length} response{feedback.length === 1 ? '' : 's'}</span></div>
+          <div className="admin-insight-title"><strong>Beta feedback</strong><span className="feedback-actions"><span>{feedback.length} response{feedback.length === 1 ? '' : 's'}</span><button type="button" onClick={onResetFeedback}>Reset cycle</button></span></div>
           <div className="feedback-summary">
             <Metric label="Average rating" value={feedbackAnalytics.average ? `${feedbackAnalytics.average}/5` : '—'} accent="green" />
             <div className="feedback-priority"><span>Top improvement</span><strong>{feedbackAnalytics.topImprovement || 'Waiting for feedback'}</strong></div>
@@ -177,7 +177,7 @@ export default function AdminPanel({ open, users = [], feedback = [], passwordRe
                 </div>
                 <div className="user-admin-actions">
                   <span className={user.is_approved ? 'account-status approved' : 'account-status pending'}>{user.is_approved ? 'Active' : 'Pending'}</span>
-                  {user.is_admin ? <span className="admin-badge">Admin</span> : (
+                  {user.is_admin ? <span className="admin-badge">★ Admin</span> : (
                     <>
                       <button className="user-action icon-action reset" type="button" onClick={() => setResetTargetId((current) => current === user.id ? '' : user.id)} aria-label={`Reset @${user.username}'s password`} title="Reset password">⌁</button>
                       <button className="user-action icon-action remove" type="button" onClick={() => onRemove(user.id, user.username)} aria-label={`Remove @${user.username}`} title="Remove user">×</button>

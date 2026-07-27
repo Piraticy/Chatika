@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_designated_admin
 from app.db.session import get_db
 from app.models.entities import CallParticipant, CallRoom, User
 from app.schemas.call import CallRoomOut, JoinCallInput, StartCallInput
@@ -66,7 +66,7 @@ def end_call(call_room_id: str, current_user: User = Depends(get_current_user), 
     room = db.get(CallRoom, call_room_id)
     if not room:
         raise HTTPException(status_code=404, detail='Call room not found')
-    if room.created_by != current_user.id and not current_user.is_admin:
+    if room.created_by != current_user.id and not is_designated_admin(current_user):
         raise HTTPException(status_code=403, detail='Only the owner/admin can end this call')
 
     room.ended_at = datetime.now(timezone.utc)

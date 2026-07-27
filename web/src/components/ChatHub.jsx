@@ -223,22 +223,23 @@ export default function ChatHub({
         {tab === 'settings' && <section className="hub-settings">
           <article><span className="settings-icon"><HubIcon name="spark" /></span><div><strong>Notifications</strong><small>{notificationStatus === 'on' ? 'Enabled for messages and calls' : 'Stay connected when Chatika is closed'}</small></div>{notificationStatus === 'on' ? <b className="settings-good">On</b> : <button type="button" onClick={onEnableNotifications}>Enable</button>}</article>
           <article><span className="settings-icon"><HubIcon name="settings" /></span><div><strong>{dataSaver ? 'Data saver' : 'High quality media'}</strong><small>{dataSaver ? 'Lighter media for lower data use' : 'Full quality when your connection allows'}</small></div><button type="button" onClick={onToggleDataSaver}>{dataSaver ? 'On' : 'Off'}</button></article>
+          <article><span className="settings-icon"><HubIcon name="spark" /></span><div><strong>Night theme</strong><small>Changes automatically with your device time</small></div><b className="settings-good">Auto</b></article>
           {isAdmin && <article><span className="settings-icon"><HubIcon name="friends" /></span><div><strong>Admin control</strong><small>Users, feedback, and beta activity</small></div><button type="button" onClick={onOpenAdmin}>Open</button></article>}
           <button type="button" className="hub-logout" onClick={onLogout}>Log out</button>
         </section>}
 
         {tab === 'search' && <section className="hub-search">
           <div className="hub-section-title"><span>Find people</span><button type="button" onClick={() => setComposerOpen(true)}>New group</button></div>
-          <form onSubmit={searchPeople} className="hub-search-form"><HubIcon name="search" /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search a Chatika username" /><button type="submit">Search</button></form>
+          <form onSubmit={searchPeople} className="hub-search-form"><HubIcon name="search" /><input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search a Chatika username" /><button type="submit">Search</button></form>
           <div className="hub-list search-results">
             {searchLoading && <p className="hub-loading">Searching Chatika…</p>}
             {!searchLoading && results.map((person) => <button key={person.id} type="button" className="hub-person-row" onClick={() => startChat(person.username)}><HubAvatar user={person} /><span><strong>@{person.username}</strong><small>{person.is_online ? 'Online now' : person.is_nearby ? 'Nearby on Chatika' : 'Open a private chat'}</small></span><HubIcon name="chevron" size={18} /></button>)}
             {!searchLoading && !results.length && <HubEmpty icon="search" title="Search people" description="Enter a username to begin a private conversation." />}
           </div>
         </section>}
+        {notice && <p className="hub-notice" role="status">{notice}</p>}
       </section>
 
-      {notice && <p className="hub-notice" role="status">{notice}</p>}
       <nav className="hub-dock" aria-label="Chatika navigation">
         <TabButton active={tab === 'chats'} icon="chats" label="Chats" badge={unreadTotal} onClick={() => setTab('chats')} />
         <TabButton active={tab === 'friends'} icon="friends" label="Friends" onClick={() => setTab('friends')} />

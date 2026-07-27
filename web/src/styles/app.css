@@ -22,6 +22,69 @@
   --radius-md: 12px;
 }
 
+html[data-theme='night'] {
+  color-scheme: dark;
+  --ink: #edf7fb;
+  --ink-soft: #c6d5df;
+  --paper: #071321;
+  --paper-deep: #0d1d2b;
+  --panel: rgba(10, 24, 39, 0.9);
+  --line: #213d50;
+  --line-strong: #345870;
+  --forest: #f2fbff;
+  --forest-dark: #ffffff;
+  --mint: #123e38;
+  --lime: #21dce5;
+  --coral: #ff9b82;
+  --muted: #94aab9;
+  --bubble-me: #0b4a42;
+  --bubble-other: #102231;
+  --shadow: 0 22px 70px rgba(0, 0, 0, .35);
+  --shadow-small: 0 8px 22px rgba(0, 0, 0, .3);
+}
+
+html[data-theme='night'] .auth-root,
+html[data-theme='night'] .chat-root,
+html[data-theme='night'] .thread,
+html[data-theme='night'] .chat-hub,
+html[data-theme='night'] .startup-screen {
+  background: var(--paper);
+}
+
+html[data-theme='night'] .glass,
+html[data-theme='night'] .hub-dock,
+html[data-theme='night'] .hub-icon-button,
+html[data-theme='night'] .hub-search-form,
+html[data-theme='night'] .hub-settings article,
+html[data-theme='night'] .hub-modal,
+html[data-theme='night'] .admin-insight-card,
+html[data-theme='night'] .admin-feedback-card,
+html[data-theme='night'] .feedback-modal,
+html[data-theme='night'] .admin-search,
+html[data-theme='night'] .feedback-priority,
+html[data-theme='night'] .feedback-list > article {
+  border-color: var(--line);
+  background: rgba(13, 29, 43, .94);
+}
+
+html[data-theme='night'] input,
+html[data-theme='night'] textarea,
+html[data-theme='night'] select,
+html[data-theme='night'] .hub-friend-row > div button,
+html[data-theme='night'] .hub-call-row > button,
+html[data-theme='night'] .hub-modal header > button {
+  color: var(--ink);
+  border-color: var(--line);
+  background: #0d1d2b;
+}
+
+html[data-theme='night'] .hub-tab { color: #9eb3c0; }
+html[data-theme='night'] .hub-tab.active { color: #72e3e7; background: #123b43; }
+html[data-theme='night'] .hub-section-title,
+html[data-theme='night'] .hub-section-title > span { color: #a4bac7; }
+html[data-theme='night'] .hub-conversation-row:hover { background: rgba(19, 61, 71, .5); }
+html[data-theme='night'] .hub-new-button { background: linear-gradient(135deg, #102f43, #087e88); }
+
 * { box-sizing: border-box; }
 
 html, body, #root {
@@ -773,6 +836,9 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 .admin-insight-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
 .admin-insight-title strong { font-size: .75rem; }
 .admin-insight-title span { color: var(--muted); font-size: .59rem; }
+.feedback-actions { display: inline-flex; align-items: center; gap: 7px; }
+.feedback-actions button { border: 1px solid #9ae1e5; border-radius: 8px; cursor: pointer; padding: 5px 7px; color: #087d87; background: #e7fbfc; font-size: .55rem; font-weight: 850; }
+.feedback-actions button:hover { color: #fff; border-color: #087d87; background: #087d87; }
 .admin-breakdown-list { display: grid; gap: 8px; }
 .admin-breakdown-list > small { color: var(--muted); font-size: .65rem; }
 .admin-breakdown { display: grid; grid-template-columns: 22px minmax(80px, .8fr) minmax(70px, 1fr) 24px; align-items: center; gap: 7px; }
@@ -1029,8 +1095,8 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 .pulse-viewer > p { color: var(--ink-soft); margin: 15px 2px 3px; font-size: .84rem; line-height: 1.5; }
 
 @media (max-width: 720px) {
-  .hub-thread { display: block; padding: 0; }
-  .chat-hub { grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 11px; padding: max(12px, env(safe-area-inset-top)) 15px max(10px, env(safe-area-inset-bottom)); background: #f7fbff; }
+  .thread.hub-thread { display: block; width: 100%; height: var(--app-height); min-height: 0; padding: 0; background: var(--paper); }
+  .chat-hub { --hub-gutter: 15px; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 11px; width: 100%; height: 100%; min-height: 0; padding: max(12px, env(safe-area-inset-top)) var(--hub-gutter) 0; background: var(--paper); }
   .hub-header { min-height: 49px; }
   .hub-profile-trigger strong { font-size: 1rem; }
   .hub-icon-button { width: 40px; height: 40px; }
@@ -1041,13 +1107,13 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
   .pulse-card { width: 60px; flex-basis: 60px; }
   .pulse-card .hub-avatar { width: 49px; height: 49px; }
   .pulse-plus { top: 36px; right: 0; }
-  .hub-content { overflow: hidden; }
+  .hub-content { min-height: 0; overflow: hidden; padding-bottom: 5px; }
   .hub-list { scrollbar-width: none; }
   .hub-list::-webkit-scrollbar { display: none; }
   .hub-conversation-row { min-height: 68px; }
   .hub-conversation-copy strong { font-size: .86rem; }
   .hub-conversation-copy small { font-size: .66rem; }
-  .hub-dock { border-radius: 18px; padding: 5px 3px; }
+  .hub-dock { width: calc(100% + (var(--hub-gutter) * 2)); min-height: 67px; margin-left: calc(-1 * var(--hub-gutter)); border-width: 1px 0 0; border-radius: 20px 20px 0 0; padding: 6px 8px calc(7px + env(safe-area-inset-bottom)); background: rgba(247,251,255,.97); box-shadow: 0 -12px 30px rgba(10,18,33,.09); }
   .hub-tab { min-height: 49px; padding: 5px 1px; }
   .hub-tab small { font-size: .49rem; }
   .hub-empty { padding: 24px 18px; }
@@ -1056,7 +1122,7 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 }
 
 @media (max-width: 360px) {
-  .chat-hub { padding-right: 10px; padding-left: 10px; }
+  .chat-hub { --hub-gutter: 10px; }
   .hub-header-actions { gap: 5px; }
   .hub-avatar.header { width: 41px; height: 41px; }
   .hub-section-title { font-size: .56rem; }

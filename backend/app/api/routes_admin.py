@@ -1,10 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_admin
+from app.api.deps import get_current_admin, is_designated_admin
 from app.db.session import get_db
 from app.models.entities import BetaFeedback, SessionToken, User
 from app.schemas.admin import AddUserInput, ApproveUserInput, RemoveUserInput, ResetPasswordInput
@@ -27,7 +27,7 @@ def list_users(_admin: User = Depends(get_current_admin), db: Session = Depends(
             'id': user.id,
             'username': user.username,
             'avatar_url': user.avatar_url,
-            'is_admin': user.is_admin,
+            'is_admin': is_designated_admin(user),
             'is_approved': user.is_approved,
             'is_online': user.is_online,
             'last_seen_at': user.last_seen_at.isoformat() if user.last_seen_at else None,
@@ -64,6 +64,23 @@ def list_feedback(_admin: User = Depends(get_current_admin), db: Session = Depen
         }
         for feedback, username in rows
     ]
+
+
+@router.post('/reset-beta-feedback')
+def reset_beta_feedback(_admin: User = Depends(get_current_admin), db: Session = Depends(get_db)) -> dict:
+    available_after = datetime.now(timezone.utc) + timedelta(days=3)
+    db.execute(delete(BetaFeedback))
+    users = db.scalars(select(User)).all()
+    for user in users:
+        user.beta_feedback_use_count = 0
+        user.beta_feedback_eligible = not is_designated_admin(user)
+        user.beta_feedback_available_after = None if is_designated_admin(user) else available_after
+        db.add(user)
+    db.commit()
+    return {
+        'message': 'Beta feedback responses cleared. Eligible users will be asked again after three days and ten new sessions.',
+        'available_after': available_after.isoformat(),
+    }
 
 
 @router.post('/approve-user')
@@ -143,6 +160,8 @@ def add_user(data: AddUserInput, _admin: User = Depends(get_current_admin), db: 
         password_hash=hash_password(data.password),
         is_approved=True,
         is_admin=False,
+        beta_feedback_eligible=True,
+        beta_feedback_use_count=0,
     )
     db.add(user)
     db.commit()

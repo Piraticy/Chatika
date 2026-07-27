@@ -106,6 +106,22 @@ export default function App() {
   const isAuthed = Boolean(token && me);
 
   useEffect(() => {
+    const syncTheme = () => {
+      const hour = new Date().getHours();
+      const theme = hour >= 19 || hour < 6 ? 'night' : 'day';
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme === 'night' ? 'dark' : 'light';
+    };
+    syncTheme();
+    const interval = window.setInterval(syncTheme, 60_000);
+    document.addEventListener('visibilitychange', syncTheme);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', syncTheme);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(ACCESS_KEY, token || '');
     localStorage.setItem(REFRESH_KEY, refreshToken || '');
   }, [token, refreshToken]);
@@ -683,6 +699,13 @@ export default function App() {
       body: { user_id: userId, new_password: newPassword }
     });
     setAdminPasswordResetRequests((prev) => prev.filter((request) => request.id !== userId));
+  }
+
+  async function resetBetaFeedbackCycle() {
+    if (!window.confirm('Clear all beta feedback and ask eligible users again after three days and ten new app sessions?')) return;
+    await authedApi('/admin/reset-beta-feedback', { method: 'POST', token });
+    setAdminFeedback([]);
+    await loadAdminUsers();
   }
 
   async function submitBetaFeedback(payload) {
@@ -1462,6 +1485,7 @@ export default function App() {
         onApprove={approveUser}
         onRemove={removeUser}
         onResetPassword={resetUserPassword}
+        onResetFeedback={resetBetaFeedbackCycle}
       />
       <BetaFeedbackModal
         open={Boolean(me?.needs_beta_feedback)}
