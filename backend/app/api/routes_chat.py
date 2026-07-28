@@ -3,13 +3,13 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, is_designated_admin
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, User
+from app.models.entities import ChatRoom, ChatRoomMember, DevicePushToken, Message, MessageDeletion, User
 from app.schemas.chat import CallHistoryOut, CreateGroupInput, CreateRoomInput, DiscoverUserOut, InviteMemberInput, MessageOut, MessageReactionInput, RoomOut, RoomParticipantOut, SendMessageInput, StartDirectChatInput
 from app.services.push import push_service
 from app.services.ws_manager import ws_manager
@@ -334,6 +334,7 @@ async def invite_member(
 @router.get('/rooms', response_model=list[RoomOut])
 def list_rooms(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[RoomOut]:
     memberships = db.scalars(select(ChatRoomMember).where(ChatRoomMember.user_id == current_user.id)).all()
+    hidden_at_by_room = {m.room_id: m.hidden_at for m in memberships if m.hidden_at}
     room_ids = [m.room_id for m in memberships]
     if not room_ids:
         return []
@@ -375,6 +376,17 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
 
     room_outs = []
     for room in rooms:
+        hidden_at = hidden_at_by_room.get(room.id)
+        if hidden_at:
+            last_message_at = last_message_by_room.get(room.id).created_at if room.id in last_message_by_room else None
+            # A deleted/hidden conversation reappears once new activity lands
+            # in it, same as every other chat app's "clear chat" behavior.
+            # Strict "<" (not "<="): hidden_at is stored with microsecond
+            # precision while SQLite's CURRENT_TIMESTAMP-backed created_at is
+            # second-precision, so a message landing in the same second as
+            # the hide action must still count as newer, not older.
+            if not last_message_at or last_message_at < hidden_at:
+                continue
         participants = [
             RoomParticipantOut(
                 id=user.id, username=user.username, avatar_url=user.avatar_url,
@@ -409,6 +421,38 @@ def list_rooms(current_user: User = Depends(get_current_user), db: Session = Dep
     return room_outs
 
 
+@router.delete('/rooms/{room_id}', status_code=204)
+def delete_room(
+    room_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    room = db.get(ChatRoom, room_id)
+    membership = db.scalar(
+        select(ChatRoomMember).where(ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == current_user.id)
+    )
+    if not room or not membership:
+        raise HTTPException(status_code=404, detail='Conversation not found')
+
+    if room.is_group:
+        # Leaving a group only removes your own membership - the group and
+        # its history keep existing for everyone else, like every other
+        # chat app's "leave group" action.
+        db.delete(membership)
+    else:
+        # A direct chat can't be "left" without also removing the other
+        # person, so deleting it just hides it from your own list; it
+        # reappears automatically if new messages arrive (see list_rooms).
+        # Truncate to whole seconds to match the second-precision
+        # created_at SQLite produces via CURRENT_TIMESTAMP - otherwise a
+        # message landing in the same wall-clock second as this hide action
+        # would compare as "older" purely from leftover microseconds and the
+        # conversation would never reappear (see list_rooms).
+        membership.hidden_at = datetime.now(timezone.utc).replace(microsecond=0)
+        db.add(membership)
+    db.commit()
+
+
 @router.get('/call-history', response_model=list[CallHistoryOut])
 def list_call_history(
     limit: int = 60,
@@ -416,6 +460,7 @@ def list_call_history(
     db: Session = Depends(get_db),
 ) -> list[CallHistoryOut]:
     safe_limit = max(1, min(limit, 100))
+    hidden_message_ids = select(MessageDeletion.message_id).where(MessageDeletion.user_id == current_user.id)
     rows = db.execute(
         select(Message, User)
         .join(ChatRoomMember, ChatRoomMember.room_id == Message.room_id)
@@ -423,6 +468,7 @@ def list_call_history(
         .where(
             ChatRoomMember.user_id == current_user.id,
             Message.message_type == 'call_log',
+            Message.id.not_in(hidden_message_ids),
         )
         .order_by(Message.created_at.desc())
         .limit(safe_limit)
@@ -540,8 +586,12 @@ def list_messages(
         raise HTTPException(status_code=403, detail='Not a member of this room')
 
     safe_limit = max(1, min(limit, 100))
+    hidden_message_ids = select(MessageDeletion.message_id).where(MessageDeletion.user_id == current_user.id)
     messages = db.scalars(
-        select(Message).where(Message.room_id == room_id).order_by(Message.created_at.desc()).limit(safe_limit)
+        select(Message)
+        .where(Message.room_id == room_id, Message.id.not_in(hidden_message_ids))
+        .order_by(Message.created_at.desc())
+        .limit(safe_limit)
     ).all()
     sender_ids = {message.sender_id for message in messages}
     sender_usernames = {
@@ -593,6 +643,31 @@ def list_messages(
         )
         for m in messages
     ]
+
+
+@router.delete('/messages/{message_id}', status_code=204)
+def delete_message(
+    message_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    message = db.get(Message, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail='Message not found')
+    membership = db.scalar(
+        select(ChatRoomMember).where(ChatRoomMember.room_id == message.room_id, ChatRoomMember.user_id == current_user.id)
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail='Not a member of this room')
+
+    # Delete-for-me only: hides the message (or call-log entry) from this
+    # user's own view without touching the other participant's copy.
+    existing = db.scalar(
+        select(MessageDeletion).where(MessageDeletion.user_id == current_user.id, MessageDeletion.message_id == message_id)
+    )
+    if not existing:
+        db.add(MessageDeletion(user_id=current_user.id, message_id=message_id))
+        db.commit()
 
 
 @router.post('/messages/{message_id}/react', response_model=MessageOut)

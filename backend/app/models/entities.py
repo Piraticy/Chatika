@@ -70,6 +70,7 @@ class ChatRoomMember(Base, UUIDTimeMixin):
     room_id: Mapped[str] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     role: Mapped[str] = mapped_column(String(30), default='member')
+    hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Message(Base, UUIDTimeMixin):
@@ -85,6 +86,14 @@ class Message(Base, UUIDTimeMixin):
     reaction_users_json: Mapped[str] = mapped_column(Text, default='{}')
     text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class MessageDeletion(Base, UUIDTimeMixin):
+    __tablename__ = 'message_deletions'
+    __table_args__ = (UniqueConstraint('user_id', 'message_id', name='uq_message_deletion_user_message'),)
+
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    message_id: Mapped[str] = mapped_column(ForeignKey('messages.id', ondelete='CASCADE'), index=True)
 
 
 class StatusUpdate(Base, UUIDTimeMixin):

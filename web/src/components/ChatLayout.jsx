@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { APP_CREDIT, APP_VERSION } from '../lib/version';
 import ChatHub from './ChatHub';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
@@ -82,7 +82,10 @@ export default function ChatLayout({
   onShareScreen,
   statuses,
   onPostStatus,
-  onLoadCallHistory
+  onDeleteStatus,
+  onLoadCallHistory,
+  onDeleteRoom,
+  onDeleteMessage
 }) {
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || null;
   const activeOthers = useMemo(
@@ -300,16 +303,30 @@ export default function ChatLayout({
     }
   }
 
-  function chooseReaction(messageId, emoji) {
+  const chooseReaction = useCallback((messageId, emoji) => {
     onReact?.(messageId, emoji);
     setActionMessageId(null);
-  }
+  }, [onReact]);
 
-  function startReply(message) {
+  const startReply = useCallback((message) => {
     setReplyingTo(message);
     setActionMessageId(null);
     window.setTimeout(() => composerRef.current?.querySelector('input[name="text"]')?.focus(), 0);
-  }
+  }, []);
+
+  const deleteMessage = useCallback(async (messageId) => {
+    setActionMessageId(null);
+    if (!window.confirm('Delete this message for you?')) return;
+    try {
+      await onDeleteMessage?.(messageId);
+    } catch (error) {
+      setLocalError(error.message || 'Could not delete this message.');
+    }
+  }, [onDeleteMessage]);
+
+  const toggleAction = useCallback((messageId) => {
+    setActionMessageId((value) => (value === messageId ? null : messageId));
+  }, []);
 
   return (
     <div className={sidebarOpen ? 'chat-root' : 'chat-root sidebar-collapsed'}>
@@ -381,7 +398,10 @@ export default function ChatLayout({
             onDiscoverFriends={onDiscoverFriends}
             onCreateGroup={onCreateGroup}
             onPostStatus={onPostStatus}
+            onDeleteStatus={onDeleteStatus}
             onLoadCallHistory={onLoadCallHistory}
+            onDeleteRoom={onDeleteRoom}
+            onDeleteMessage={onDeleteMessage}
             onStartCall={onStartCall}
             onOpenSidebar={() => setSidebarOpen(true)}
             notificationStatus={notificationStatus}
@@ -407,7 +427,7 @@ export default function ChatLayout({
         </header>
         <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
           {!orderedMessages.length && <div className="empty-chat"><h3>{activeRoom ? 'Say hello' : 'Start a conversation'}</h3><p>{activeRoom ? 'Messages, calls, and media stay together here.' : 'Add a friend by their Chatika username.'}</p></div>}
-          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} delivered={Boolean(deliveredByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={() => setActionMessageId((value) => value === message.id ? null : message.id)} onReply={startReply} onReact={chooseReaction} />)}
+          {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} delivered={Boolean(deliveredByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={toggleAction} onReply={startReply} onReact={chooseReaction} onDelete={deleteMessage} />)}
           {typingText && <div className="typing-indicator">{typingText}</div>}
         </section>
         <div className="compose-area">
@@ -521,7 +541,7 @@ function formatRelativeTime(value) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onReply, onReact }) {
+const MessageBubble = React.memo(function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onReply, onReact, onDelete }) {
   if (message.message_type === 'call_log') return <CallLogNotice message={message} mine={message.sender_id === me.id} />;
 
   const reactions = Object.entries(message.reaction_users || {}).filter(([, users]) => users?.length);
@@ -536,19 +556,19 @@ function MessageBubble({ message, me, read, delivered, actionOpen, onToggle, onR
     longPressedRef.current = false;
     holdTimerRef.current = window.setTimeout(() => {
       longPressedRef.current = true;
-      onToggle();
+      onToggle(message.id);
     }, 450);
   }
-  return <article className={message.sender_id === me.id ? 'msg mine' : 'msg'} onPointerDown={beginHold} onPointerUp={clearHold} onPointerCancel={clearHold} onContextMenu={(event) => { event.preventDefault(); if (!longPressedRef.current) onToggle(); }} onClick={(event) => { if (event.target.closest('button, a, audio, video')) return; if (longPressedRef.current) { longPressedRef.current = false; return; } onToggle(); }}>
+  return <article className={message.sender_id === me.id ? 'msg mine' : 'msg'} onPointerDown={beginHold} onPointerUp={clearHold} onPointerCancel={clearHold} onContextMenu={(event) => { event.preventDefault(); if (!longPressedRef.current) onToggle(message.id); }} onClick={(event) => { if (event.target.closest('button, a, audio, video')) return; if (longPressedRef.current) { longPressedRef.current = false; return; } onToggle(message.id); }}>
     <span className="msg-sender">{message.sender_id === me.id ? 'You' : `@${message.sender_username || 'friend'}`}</span>
     {message.reply_to_id && <div className="reply-context"><span>↩ @{message.reply_to_sender_username || 'friend'}</span><small>{message.reply_to_text || 'Shared media'}</small></div>}
     {message.media_url && <MessageMedia message={message} />}
     {message.text && message.message_type !== 'voice' && <p>{renderText(message.text, message.id)}</p>}
-    {actionOpen && <div className="message-action-menu" onClick={(event) => event.stopPropagation()}><button type="button" className="reply-action" onClick={() => onReply(message)}>↩ Reply</button>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+    {actionOpen && <div className="message-action-menu" onClick={(event) => event.stopPropagation()}><button type="button" className="reply-action" onClick={() => onReply(message)}>↩ Reply</button>{REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onReact(message.id, emoji)}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}<button type="button" className="delete-action" onClick={() => onDelete(message.id)}>🗑 Delete</button></div>}
     {reactions.length > 0 && <div className="reaction-summary">{reactions.map(([emoji, users]) => <span key={emoji} className={users.includes(me.id) ? 'reaction-chip mine' : 'reaction-chip'}>{renderText(emoji, `${message.id}-${emoji}`)} {users.length}</span>)}</div>}
     <div className="message-meta"><time>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.sender_id === me.id && <MessageStatus read={read} delivered={delivered} />}</div>
   </article>;
-}
+});
 
 function CallLogNotice({ message, mine }) {
   let call = null;

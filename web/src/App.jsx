@@ -1,11 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 
 import AuthPanel from './components/AuthPanel';
-import AdminPanel from './components/AdminPanel';
-import CallDialog from './components/CallDialog';
 import ChatLayout from './components/ChatLayout';
 import BetaFeedbackModal from './components/BetaFeedbackModal';
-import ScreenShareDialog from './components/ScreenShareDialog';
+
+// Admin tooling and calling/screen-share UI are only needed once the admin
+// opens that panel or a call/share actually starts - code-splitting them
+// keeps the initial bundle smaller so the app opens faster.
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const CallDialog = lazy(() => import('./components/CallDialog'));
+const ScreenShareDialog = lazy(() => import('./components/ScreenShareDialog'));
 import { api, API_URL, uploadFile } from './lib/api';
 import { createSocket } from './lib/socket';
 import { enableWebPush } from './lib/push';
@@ -331,24 +335,45 @@ export default function App() {
           setRooms((prev) => [evt.data.room, ...prev.filter((room) => room.id !== evt.data.room.id)]);
         } else if (evt.event === 'status:new' && evt.data?.id) {
           setStatuses((prev) => {
-            const official = prev.filter((status) => status.is_official);
-            const otherStatuses = prev.filter((status) => !status.is_official && status.author_id !== evt.data.author_id && status.id !== evt.data.id);
-            return [...official, evt.data, ...otherStatuses];
+            const withoutStale = prev.filter((status) => (
+              status.id !== evt.data.id
+              && status.author_id !== evt.data.author_id
+              && !(evt.data.is_official && status.is_official)
+            ));
+            if (evt.data.is_official) return [evt.data, ...withoutStale];
+            const official = withoutStale.filter((status) => status.is_official);
+            const others = withoutStale.filter((status) => !status.is_official);
+            return [...official, evt.data, ...others];
           });
+        } else if (evt.event === 'status:removed' && evt.data?.id) {
+          setStatuses((prev) => prev.filter((status) => status.id !== evt.data.id));
         } else if (evt.event === 'message:reaction' && evt.data.room_id === activeRoomId) {
           setMessages((prev) =>
             prev.map((msg) => (msg.id === evt.data.message_id ? { ...msg, reaction_users: evt.data.reaction_users || {} } : msg))
           );
         } else if (evt.event === 'presence:update' && evt.data?.user_id) {
           const presence = evt.data;
-          setRooms((prev) => prev.map((room) => ({
-            ...room,
-            participants: (room.participants || []).map((participant) => (
-              participant.id === presence.user_id
-                ? { ...participant, is_online: presence.is_online, last_seen_at: presence.last_seen_at }
-                : participant
-            ))
-          })));
+          // Only touch rooms that actually contain this user - presence
+          // events fire for every online/offline transition across the
+          // whole app, and re-mapping every room's participant list on each
+          // one forced a full room-list re-render for completely unrelated
+          // noise.
+          setRooms((prev) => {
+            let changed = false;
+            const next = prev.map((room) => {
+              if (!room.participants?.some((participant) => participant.id === presence.user_id)) return room;
+              changed = true;
+              return {
+                ...room,
+                participants: room.participants.map((participant) => (
+                  participant.id === presence.user_id
+                    ? { ...participant, is_online: presence.is_online, last_seen_at: presence.last_seen_at }
+                    : participant
+                ))
+              };
+            });
+            return changed ? next : prev;
+          });
           if (presence.user_id === me.id) {
             setMe((current) => current ? { ...current, is_online: presence.is_online, last_seen_at: presence.last_seen_at } : current);
           }
@@ -481,15 +506,35 @@ export default function App() {
       body: { text: text || null, media_url: mediaUrl }
     });
     setStatuses((prev) => {
-      const official = prev.filter((item) => item.is_official);
-      const others = prev.filter((item) => !item.is_official && item.author_id !== status.author_id);
+      const withoutStale = prev.filter((item) => (
+        item.author_id !== status.author_id && !(status.is_official && item.is_official)
+      ));
+      if (status.is_official) return [status, ...withoutStale];
+      const official = withoutStale.filter((item) => item.is_official);
+      const others = withoutStale.filter((item) => !item.is_official);
       return [...official, status, ...others];
     });
     return status;
   }
 
+  async function deleteStatus(statusId) {
+    await authedApi(`/status/${statusId}`, { method: 'DELETE', token });
+    setStatuses((prev) => prev.filter((item) => item.id !== statusId));
+  }
+
   async function loadCallHistory() {
     return authedApi('/chat/call-history?limit=60', { token });
+  }
+
+  async function deleteRoom(roomId) {
+    await authedApi(`/chat/rooms/${roomId}`, { method: 'DELETE', token });
+    setRooms((prev) => prev.filter((room) => room.id !== roomId));
+    if (activeRoomId === roomId) setActiveRoomId('');
+  }
+
+  async function deleteMessage(messageId) {
+    await authedApi(`/chat/messages/${messageId}`, { method: 'DELETE', token });
+    setMessages((prev) => prev.filter((message) => message.id !== messageId));
   }
 
   async function updateProfilePhoto(file) {
@@ -1433,70 +1478,79 @@ export default function App() {
           if (kind) startCall(kind, roomId);
         }}
         onPostStatus={postStatus}
+        onDeleteStatus={deleteStatus}
         onLoadCallHistory={loadCallHistory}
+        onDeleteRoom={deleteRoom}
+        onDeleteMessage={deleteMessage}
         shareActive={shareActive}
         onShareScreen={() => {
           setShareError('');
           setShareDialogOpen(true);
         }}
       />
-      <ScreenShareDialog
-        open={shareDialogOpen}
-        supported={screenShareAvailability.supported}
-        isMobile={screenShareAvailability.mobile}
-        unavailableMessage={screenShareAvailability.message}
-        active={shareActive}
-        localStream={localShareStream}
-        remoteStreams={remoteStreams}
-        error={shareError}
-        dataSaver={dataSaver}
-        onStart={startShare}
-        onStop={stopShare}
-        onClose={() => setShareDialogOpen(false)}
-        onToggleDataSaver={() => setDataSaver((value) => !value)}
-      />
-      <CallDialog
-        open={callDialogOpen}
-        active={callActive}
-        kind={callKind}
-        incoming={incomingCall}
-        localStream={localCallStream}
-        remoteStreams={remoteCallStreams}
-        error={callError}
-        connectionStatus={callConnectionStatus}
-        targetLabel={callTargetLabel}
-        targetProfile={callTargetProfile}
-        participantNames={callParticipantNames}
-        participantProfiles={callParticipantProfiles}
-        muted={callMuted}
-        cameraOff={callCameraOff}
-        speakerOn={callSpeakerOn}
-        onStart={startCall}
-        onAccept={acceptIncomingCall}
-        onReject={rejectIncomingCall}
-        onHangup={() => {
-          stopCall();
-          setCallDialogOpen(false);
-        }}
-        onToggleMute={toggleCallMute}
-        onToggleCamera={toggleCallCamera}
-        onToggleSpeaker={toggleCallSpeaker}
-        onClose={() => setCallDialogOpen(false)}
-      />
-      <AdminPanel
-        open={adminOpen}
-        users={adminUsers}
-        feedback={adminFeedback}
-        passwordResetRequests={adminPasswordResetRequests}
-        loading={adminLoading}
-        error={adminError}
-        onClose={() => setAdminOpen(false)}
-        onRefresh={loadAdminUsers}
-        onApprove={approveUser}
-        onRemove={removeUser}
-        onResetPassword={resetUserPassword}
-        onResetFeedback={resetBetaFeedbackCycle}
-      />
+      <Suspense fallback={null}>
+        <ScreenShareDialog
+          open={shareDialogOpen}
+          supported={screenShareAvailability.supported}
+          isMobile={screenShareAvailability.mobile}
+          unavailableMessage={screenShareAvailability.message}
+          active={shareActive}
+          localStream={localShareStream}
+          remoteStreams={remoteStreams}
+          error={shareError}
+          dataSaver={dataSaver}
+          onStart={startShare}
+          onStop={stopShare}
+          onClose={() => setShareDialogOpen(false)}
+          onToggleDataSaver={() => setDataSaver((value) => !value)}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CallDialog
+          open={callDialogOpen}
+          active={callActive}
+          kind={callKind}
+          incoming={incomingCall}
+          localStream={localCallStream}
+          remoteStreams={remoteCallStreams}
+          error={callError}
+          connectionStatus={callConnectionStatus}
+          targetLabel={callTargetLabel}
+          targetProfile={callTargetProfile}
+          participantNames={callParticipantNames}
+          participantProfiles={callParticipantProfiles}
+          muted={callMuted}
+          cameraOff={callCameraOff}
+          speakerOn={callSpeakerOn}
+          onStart={startCall}
+          onAccept={acceptIncomingCall}
+          onReject={rejectIncomingCall}
+          onHangup={() => {
+            stopCall();
+            setCallDialogOpen(false);
+          }}
+          onToggleMute={toggleCallMute}
+          onToggleCamera={toggleCallCamera}
+          onToggleSpeaker={toggleCallSpeaker}
+          onClose={() => setCallDialogOpen(false)}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <AdminPanel
+          open={adminOpen}
+          users={adminUsers}
+          feedback={adminFeedback}
+          passwordResetRequests={adminPasswordResetRequests}
+          loading={adminLoading}
+          error={adminError}
+          onClose={() => setAdminOpen(false)}
+          onRefresh={loadAdminUsers}
+          onApprove={approveUser}
+          onRemove={removeUser}
+          onResetPassword={resetUserPassword}
+          onResetFeedback={resetBetaFeedbackCycle}
+        />
+      </Suspense>
       <BetaFeedbackModal
         open={Boolean(me?.needs_beta_feedback)}
         submitting={feedbackSubmitting}
