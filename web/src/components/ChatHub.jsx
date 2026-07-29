@@ -2,28 +2,38 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../lib/api';
 import { avatarGradient, avatarInitial, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 
-function HubIcon({ name, size = 20 }) {
-  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
-  if (name === 'chats') return <svg {...common}><path d="M21 11.5a8 8 0 0 1-8.5 8 8.9 8.9 0 0 1-3.7-.9L3 20l1.6-4.1A8 8 0 1 1 21 11.5Z" /><path d="M8 11h.01M12 11h.01M16 11h.01" /></svg>;
-  if (name === 'friends') return <svg {...common}><circle cx="9" cy="8" r="3" /><path d="M3.5 20c.8-3.3 2.7-5 5.5-5s4.7 1.7 5.5 5M17 10h4M19 8v4" /></svg>;
-  if (name === 'calls') return <svg {...common}><path d="M6.6 3.5 4 5.6c-1 1 .5 5.4 3.7 8.6s7.7 4.7 8.7 3.7l2.1-2.6-3.2-2.2-2 1.4a12.5 12.5 0 0 1-3.8-3.8l1.4-2Z" /></svg>;
-  if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1 1.8-2 1.2-1.4-1a7 7 0 0 1-2 .8l-.5 1.7h-2.3l-.5-1.7a7 7 0 0 1-2-.8l-1.4 1-2-1.2.1-1.8a7.7 7.7 0 0 1-1-1.7l-1.5-.7V10l1.5-.7a7.7 7.7 0 0 1 1-1.7L4.8 5.8l2-1.2 1.4 1a7 7 0 0 1 2-.8l.5-1.7h2.3l.5 1.7a7 7 0 0 1 2 .8l1.4-1 2 1.2-.1 1.8a7.7 7.7 0 0 1 1 1.7l1.5.7v2.3l-1.5.7a7.7 7.7 0 0 1-1 1.7Z" /></svg>;
-  if (name === 'search') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg>;
-  if (name === 'plus') return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
-  if (name === 'send') return <svg {...common}><path d="m21 3-7 18-3.9-7.1L3 10Z" /><path d="M10.1 13.9 21 3" /></svg>;
-  if (name === 'phone') return <svg {...common}><path d="M7 3.5 4.5 5.7c-1 1 .5 5.4 3.7 8.6s7.7 4.7 8.8 3.7l2-2.5-3.1-2.2-2 1.3a13 13 0 0 1-3.8-3.8l1.4-2Z" /></svg>;
-  if (name === 'video') return <svg {...common}><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 5-3v10l-5-3Z" /></svg>;
-  if (name === 'spark') return <svg {...common}><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /></svg>;
-  if (name === 'chevron') return <svg {...common}><path d="m9 18 6-6-6-6" /></svg>;
-  if (name === 'trash') return <svg {...common}><path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m-9 0 .8 12.2c0 .9.8 1.6 1.7 1.6h5c.9 0 1.7-.7 1.7-1.6L18 7" /><path d="M10 11v6M14 11v6" /></svg>;
-  return <svg {...common}><circle cx="12" cy="12" r="9" /></svg>;
+function HubIcon({ name, size = 20, filled = false }) {
+  const box = { width: size, height: size, viewBox: '0 0 24 24', 'aria-hidden': true };
+  const stroke = { ...box, fill: 'none', stroke: 'currentColor', strokeWidth: filled ? 2.3 : 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (name === 'chats') {
+    if (filled) return <svg {...box} fill="currentColor" stroke="none"><path d="M21 11.5a8 8 0 0 1-8.5 8 8.9 8.9 0 0 1-3.7-.9L3 20l1.6-4.1A8 8 0 1 1 21 11.5Z" /><circle cx="8" cy="11" r="1.15" fill="#08111f" /><circle cx="12" cy="11" r="1.15" fill="#08111f" /><circle cx="16" cy="11" r="1.15" fill="#08111f" /></svg>;
+    return <svg {...stroke}><path d="M21 11.5a8 8 0 0 1-8.5 8 8.9 8.9 0 0 1-3.7-.9L3 20l1.6-4.1A8 8 0 1 1 21 11.5Z" /><path d="M8 11h.01M12 11h.01M16 11h.01" /></svg>;
+  }
+  if (name === 'friends') return <svg {...stroke}><circle cx="9" cy="8" r="3" /><path d="M3.5 20c.8-3.3 2.7-5 5.5-5s4.7 1.7 5.5 5M17 10h4M19 8v4" /></svg>;
+  if (name === 'calls') {
+    if (filled) return <svg {...box} fill="currentColor" stroke="none"><path d="M6.6 3.5 4 5.6c-1 1 .5 5.4 3.7 8.6s7.7 4.7 8.7 3.7l2.1-2.6-3.2-2.2-2 1.4a12.5 12.5 0 0 1-3.8-3.8l1.4-2Z" /></svg>;
+    return <svg {...stroke}><path d="M6.6 3.5 4 5.6c-1 1 .5 5.4 3.7 8.6s7.7 4.7 8.7 3.7l2.1-2.6-3.2-2.2-2 1.4a12.5 12.5 0 0 1-3.8-3.8l1.4-2Z" /></svg>;
+  }
+  if (name === 'settings') return <svg {...stroke}><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1 1.8-2 1.2-1.4-1a7 7 0 0 1-2 .8l-.5 1.7h-2.3l-.5-1.7a7 7 0 0 1-2-.8l-1.4 1-2-1.2.1-1.8a7.7 7.7 0 0 1-1-1.7l-1.5-.7V10l1.5-.7a7.7 7.7 0 0 1 1-1.7L4.8 5.8l2-1.2 1.4 1a7 7 0 0 1 2-.8l.5-1.7h2.3l.5 1.7a7 7 0 0 1 2 .8l1.4-1 2 1.2-.1 1.8a7.7 7.7 0 0 1 1 1.7l1.5.7v2.3l-1.5.7a7.7 7.7 0 0 1-1 1.7Z" /></svg>;
+  if (name === 'search') return <svg {...stroke}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg>;
+  if (name === 'plus') return <svg {...stroke}><path d="M12 5v14M5 12h14" /></svg>;
+  if (name === 'send') return <svg {...stroke}><path d="m21 3-7 18-3.9-7.1L3 10Z" /><path d="M10.1 13.9 21 3" /></svg>;
+  if (name === 'phone') return <svg {...stroke}><path d="M7 3.5 4.5 5.7c-1 1 .5 5.4 3.7 8.6s7.7 4.7 8.8 3.7l2-2.5-3.1-2.2-2 1.3a13 13 0 0 1-3.8-3.8l1.4-2Z" /></svg>;
+  if (name === 'video') return <svg {...stroke}><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 5-3v10l-5-3Z" /></svg>;
+  if (name === 'spark') return <svg {...stroke}><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /></svg>;
+  if (name === 'chevron') return <svg {...stroke}><path d="m9 18 6-6-6-6" /></svg>;
+  if (name === 'trash') return <svg {...stroke}><path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m-9 0 .8 12.2c0 .9.8 1.6 1.7 1.6h5c.9 0 1.7-.7 1.7-1.6L18 7" /><path d="M10 11v6M14 11v6" /></svg>;
+  return <svg {...stroke}><circle cx="12" cy="12" r="9" /></svg>;
 }
 
-function HubAvatar({ user, size = 'default' }) {
+function HubAvatar({ user, size = 'default', online = false }) {
   const preset = presetFromAvatarUrl(user?.avatar_url);
-  if (user?.avatar_url && !preset) return <img className={`hub-avatar ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
-  if (preset) return <span className={`hub-avatar ${size}`} style={presetGradient(preset)}>{preset.glyph}</span>;
-  return <span className={`hub-avatar ${size}`} style={avatarGradient(user?.id || user?.username)}>{avatarInitial(user?.username)}</span>;
+  let el;
+  if (user?.avatar_url && !preset) el = <img className={`hub-avatar ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
+  else if (preset) el = <span className={`hub-avatar ${size}`} style={presetGradient(preset)}>{preset.glyph}</span>;
+  else el = <span className={`hub-avatar ${size}`} style={avatarGradient(user?.id || user?.username)}>{avatarInitial(user?.username)}</span>;
+  if (!online) return el;
+  return <span className="avatar-wrap">{el}<i className="online-dot" aria-hidden="true" /></span>;
 }
 
 function formatTime(value) {
@@ -118,10 +128,16 @@ export default function ChatHub({
   const [callHistory, setCallHistory] = useState([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [notice, setNotice] = useState('');
+  const [chatFilter, setChatFilter] = useState('');
   const searchRequestIdRef = useRef(0);
 
   const orderedRooms = useMemo(() => [...rooms].sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0)), [rooms]);
   const directRooms = useMemo(() => orderedRooms.filter((room) => !room.is_group), [orderedRooms]);
+  const visibleRooms = useMemo(() => {
+    const query = chatFilter.trim().toLowerCase();
+    if (!query) return orderedRooms;
+    return orderedRooms.filter((room) => roomName(room, me.id).toLowerCase().includes(query));
+  }, [orderedRooms, chatFilter, me.id]);
   const unreadTotal = useMemo(() => Object.values(unreadCounts || {}).reduce((total, count) => total + Number(count || 0), 0), [unreadCounts]);
   const roomsById = useMemo(() => Object.fromEntries(rooms.map((room) => [room.id, room])), [rooms]);
 
@@ -285,10 +301,12 @@ export default function ChatHub({
 
       <section className="hub-content">
         {tab === 'chats' && <>
-          <div className="hub-section-title conversations-title"><span>Conversations</span><small>{unreadTotal ? `${unreadTotal} new` : `${orderedRooms.length} active`}</small></div>
+          {orderedRooms.length > 4 && <label className="hub-chat-filter"><HubIcon name="search" size={16} /><input value={chatFilter} onChange={(event) => setChatFilter(event.target.value)} placeholder="Search your chats" aria-label="Filter conversations" />{chatFilter && <button type="button" onClick={() => setChatFilter('')} aria-label="Clear filter">×</button>}</label>}
+          <div className="hub-section-title conversations-title"><span>Conversations</span><small>{unreadTotal ? `${unreadTotal} new` : `${visibleRooms.length} active`}</small></div>
           <div className="hub-list">
-            {orderedRooms.map((room) => <ConversationRow key={room.id} room={room} me={me} unread={unreadCounts?.[room.id] || 0} onSelect={selectRoom} onDelete={deleteRoom} />)}
+            {visibleRooms.map((room) => <ConversationRow key={room.id} room={room} me={me} unread={unreadCounts?.[room.id] || 0} onSelect={selectRoom} onDelete={deleteRoom} />)}
             {!orderedRooms.length && <HubEmpty icon="chats" title="Your conversations begin here" description="Start a private chat with a Chatika username, or bring people together in a group." action="Start a new chat" onAction={() => setComposerOpen(true)} />}
+            {Boolean(orderedRooms.length) && !visibleRooms.length && <HubEmpty icon="search" title="No matches" description="Try a different name." />}
           </div>
         </>}
 
@@ -359,7 +377,7 @@ export default function ChatHub({
 }
 
 function TabButton({ active, icon, label, badge, onClick }) {
-  return <button type="button" className={active ? 'hub-tab active' : 'hub-tab'} onClick={onClick}><span><HubIcon name={icon} size={active ? 21 : 19} />{badge > 0 && <b>{badge > 99 ? '99+' : badge}</b>}</span><small>{label}</small></button>;
+  return <button type="button" className={active ? 'hub-tab active' : 'hub-tab'} onClick={onClick}><span><HubIcon name={icon} size={active ? 21 : 19} filled={active} />{badge > 0 && <b>{badge > 99 ? '99+' : badge}</b>}</span><small>{label}</small></button>;
 }
 
 const ConversationRow = React.memo(function ConversationRow({ room, me, unread, onSelect, onDelete }) {
@@ -367,7 +385,7 @@ const ConversationRow = React.memo(function ConversationRow({ room, me, unread, 
   return (
     <div className="hub-conversation-row">
       <button type="button" className="hub-conversation-main" onClick={() => onSelect(room.id)}>
-        <HubAvatar user={person} />
+        <HubAvatar user={person} online={!room.is_group && Boolean(person?.is_online)} />
         <span className="hub-conversation-copy"><span><strong>{roomName(room, me.id)}</strong><time>{room.last_message_at ? formatTime(room.last_message_at) : ''}</time></span><small className={unread ? 'unread' : ''}>{previewFor(room, me.id)}</small></span>
         {unread > 0 && <b className="hub-unread-count">{unread > 99 ? '99+' : unread}</b>}
       </button>
@@ -378,7 +396,7 @@ const ConversationRow = React.memo(function ConversationRow({ room, me, unread, 
 
 const FriendRow = React.memo(function FriendRow({ room, me, onSelect, onCall }) {
   const person = roomPerson(room, me.id);
-  return <article className="hub-friend-row"><button type="button" onClick={() => onSelect(room.id)}><HubAvatar user={person} /><span><strong>{roomName(room, me.id)}</strong><small>{person?.is_online ? 'Online now' : 'Private Chatika friend'}</small></span></button><div><button type="button" aria-label={`Audio call ${roomName(room, me.id)}`} onClick={() => onCall('audio', room.id)}><HubIcon name="phone" size={18} /></button><button type="button" aria-label={`Video call ${roomName(room, me.id)}`} onClick={() => onCall('video', room.id)}><HubIcon name="video" size={18} /></button></div></article>;
+  return <article className="hub-friend-row"><button type="button" onClick={() => onSelect(room.id)}><HubAvatar user={person} online={Boolean(person?.is_online)} /><span><strong>{roomName(room, me.id)}</strong><small>{person?.is_online ? 'Online now' : 'Private Chatika friend'}</small></span></button><div><button type="button" aria-label={`Audio call ${roomName(room, me.id)}`} onClick={() => onCall('audio', room.id)}><HubIcon name="phone" size={18} /></button><button type="button" aria-label={`Video call ${roomName(room, me.id)}`} onClick={() => onCall('video', room.id)}><HubIcon name="video" size={18} /></button></div></article>;
 });
 
 const CallHistoryRow = React.memo(function CallHistoryRow({ call, me, room, onCall, onDelete }) {
