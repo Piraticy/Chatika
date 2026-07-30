@@ -104,6 +104,7 @@ export default function ChatLayout({
   const restoredPositionsRef = useRef(new Set());
   const composerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const profileInputRef = useRef(null);
   const recorderRef = useRef(null);
   const edgeSwipeRef = useRef(null);
@@ -127,6 +128,7 @@ export default function ChatLayout({
   // then explicitly discard or send) -> back to 'idle'. Recording never
   // auto-sends - see startRecording/stopRecording/sendPreviewClip below.
   const [recordingPhase, setRecordingPhase] = useState('idle');
+  const [recordingPaused, setRecordingPaused] = useState(false);
   const [previewClip, setPreviewClip] = useState(null);
   const [waveLevels, setWaveLevels] = useState(() => Array(24).fill(0.08));
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -152,7 +154,7 @@ export default function ChatLayout({
   }, [orderedMessages, activeRoomId, me.id]);
 
   useEffect(() => {
-    if (recordingPhase !== 'recording') return undefined;
+    if (recordingPhase !== 'recording' || recordingPaused) return undefined;
     const timer = window.setInterval(() => {
       setRecordingSeconds((value) => {
         const next = value + 1;
@@ -161,7 +163,7 @@ export default function ChatLayout({
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [recordingPhase]);
+  }, [recordingPhase, recordingPaused]);
 
   useEffect(() => () => {
     recordingCancelledRef.current = true;
@@ -292,6 +294,32 @@ export default function ChatLayout({
     }
   }
 
+  // Freezes the bars without tearing down the AnalyserNode/AudioContext, so
+  // resuming is instant (no new mic permission round-trip, no gap in setup).
+  function pauseWaveformTick() {
+    if (waveformRafRef.current) cancelAnimationFrame(waveformRafRef.current);
+    waveformRafRef.current = null;
+  }
+
+  function runWaveformLoop() {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const normalized = (data[i] - 128) / 128;
+        sumSquares += normalized * normalized;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const level = Math.max(0.08, Math.min(1, rms * 4));
+      setWaveLevels((prev) => [...prev.slice(1), level]);
+      waveformRafRef.current = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
   // Live amplitude visualizer (Botim/WhatsApp-style bars) - reads the same
   // mic stream MediaRecorder is capturing, so it costs nothing extra to
   // request. Purely cosmetic: if the browser can't build an AnalyserNode,
@@ -307,21 +335,8 @@ export default function ChatLayout({
       source.connect(analyser);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
-      const data = new Uint8Array(analyser.frequencyBinCount);
       setWaveLevels(Array(24).fill(0.08));
-      const tick = () => {
-        analyser.getByteTimeDomainData(data);
-        let sumSquares = 0;
-        for (let i = 0; i < data.length; i += 1) {
-          const normalized = (data[i] - 128) / 128;
-          sumSquares += normalized * normalized;
-        }
-        const rms = Math.sqrt(sumSquares / data.length);
-        const level = Math.max(0.08, Math.min(1, rms * 4));
-        setWaveLevels((prev) => [...prev.slice(1), level]);
-        waveformRafRef.current = requestAnimationFrame(tick);
-      };
-      tick();
+      runWaveformLoop();
     } catch (_error) {
       // Visualizer is cosmetic - silently skip it.
     }
@@ -372,6 +387,7 @@ export default function ChatLayout({
       recorder.start();
       recordingSecondsRef.current = 0;
       setRecordingSeconds(0);
+      setRecordingPaused(false);
       setRecordingPhase('recording');
       startWaveform(stream);
     } catch (error) {
@@ -387,6 +403,22 @@ export default function ChatLayout({
   function cancelRecording() {
     recordingCancelledRef.current = true;
     recorderRef.current?.stop();
+  }
+
+  function pauseRecording() {
+    const recorder = recorderRef.current;
+    if (recordingPhase !== 'recording' || recordingPaused || !recorder || recorder.state !== 'recording') return;
+    recorder.pause();
+    setRecordingPaused(true);
+    pauseWaveformTick();
+  }
+
+  function resumeRecording() {
+    const recorder = recorderRef.current;
+    if (recordingPhase !== 'recording' || !recordingPaused || !recorder || recorder.state !== 'paused') return;
+    recorder.resume();
+    setRecordingPaused(false);
+    runWaveformLoop();
   }
 
   function sendPreviewClip() {
@@ -548,23 +580,28 @@ export default function ChatLayout({
 
           {recordingPhase === 'idle' && (
             <form onSubmit={submitMessage} className="composer" ref={composerRef}>
-              <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji"><UiIcon name="smile" /></button>
               <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach"><UiIcon name="plus" /></button>
               <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
-              <button type="button" className="composer-action" onClick={startRecording} disabled={!activeRoomId} aria-label="Record a voice message"><UiIcon name="mic" /></button>
               <input name="text" enterKeyHint="send" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
-              <button type="submit" className="send-button" disabled={!activeRoomId}><span>Send</span><UiIcon name="send" /></button>
+              <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji"><UiIcon name="smile" /></button>
+              <button type="button" className="composer-action" onClick={() => cameraInputRef.current?.click()} disabled={!activeRoomId} aria-label="Camera"><UiIcon name="camera" /></button>
+              <input ref={cameraInputRef} className="file-input" type="file" accept="image/*" capture="environment" onChange={handleFileChange} />
+              {draft.trim() ? (
+                <button type="submit" className="send-button round" disabled={!activeRoomId} aria-label="Send"><UiIcon name="send" /></button>
+              ) : (
+                <button type="button" className="composer-action mic-action" onClick={startRecording} disabled={!activeRoomId} aria-label="Record a voice message"><UiIcon name="mic" /></button>
+              )}
               {emojiOpen && <div className="emoji-picker"><strong className="emoji-picker-title">Chatika expressions</strong>{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${findChatikaEmoji(emoji)?.label || emoji}`}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
             </form>
           )}
 
           {recordingPhase === 'recording' && (
-            <div className="recording-bar">
+            <div className={recordingPaused ? 'recording-bar is-paused' : 'recording-bar'}>
               <button type="button" className="recording-icon-button cancel" onClick={cancelRecording} aria-label="Cancel recording"><UiIcon name="trash" /></button>
               <span className="recording-live-dot" aria-hidden="true" />
               <div className="recording-wave-live" aria-hidden="true">{waveLevels.map((level, index) => <i key={index} style={{ height: `${6 + level * 26}px` }} />)}</div>
               <strong className="recording-timer">{formatDuration(recordingSeconds)}</strong>
-              <span className="recording-lock" aria-hidden="true" title="Hands-free recording"><UiIcon name="lock" /></span>
+              <button type="button" className="recording-icon-button pause-toggle" onClick={recordingPaused ? resumeRecording : pauseRecording} aria-label={recordingPaused ? 'Resume recording' : 'Pause recording'}><UiIcon name={recordingPaused ? 'play' : 'pause'} /></button>
               <button type="button" className="recording-icon-button confirm" onClick={stopRecording} aria-label="Finish recording"><UiIcon name="check" /></button>
             </div>
           )}
@@ -822,5 +859,8 @@ function UiIcon({ name }) {
   if (name === 'trash') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m-9 0 .8 12.2c0 .9.8 1.6 1.7 1.6h5c.9 0 1.7-.7 1.7-1.6L18 7" /><path {...common} d="M10 11v6M14 11v6" /></svg>;
   if (name === 'check') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m5 13 4 4 10-10" /></svg>;
   if (name === 'lock') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect {...common} x="5" y="11" width="14" height="9" rx="2" /><path {...common} d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>;
+  if (name === 'pause') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.4" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1.4" fill="currentColor" /></svg>;
+  if (name === 'play') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.3v13.4c0 .8.9 1.3 1.6.9l10.6-6.7c.6-.4.6-1.4 0-1.8L9.6 4.4C8.9 4 8 4.5 8 5.3Z" fill="currentColor" /></svg>;
+  if (name === 'camera') return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="M4 8.5c0-.8.7-1.5 1.5-1.5h1.8l.9-1.6c.3-.5.8-.9 1.4-.9h4.8c.6 0 1.1.4 1.4.9l.9 1.6h1.8c.8 0 1.5.7 1.5 1.5v9c0 .8-.7 1.5-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-9Z" /><circle {...common} cx="12" cy="13" r="3.4" /></svg>;
   return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path {...common} d="m4 12 16-8-5.8 16-3.1-6.8L4 12Zm7.1 1.2L20 4" /></svg>;
 }

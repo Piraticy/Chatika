@@ -350,7 +350,12 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 .recording-icon-button.cancel:hover { background: #ffe0d8; }
 .recording-icon-button.confirm { color: white; background: linear-gradient(135deg, #071321, #12334a); }
 .recording-icon-button.confirm:hover { background: linear-gradient(135deg, #0c2538, #0b7180); }
+.recording-icon-button.pause-toggle { color: #067a86; background: #e3f6f7; }
+.recording-icon-button.pause-toggle:hover { background: #cdeef0; }
+.recording-bar.is-paused .recording-icon-button.pause-toggle { color: white; background: linear-gradient(135deg, #00a8b8, #067a86); }
 .recording-live-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: #d65345; box-shadow: 0 0 0 4px #ffe0d8; animation: recording-pulse 1.1s ease-in-out infinite; }
+.recording-bar.is-paused .recording-live-dot { background: #b3b8bd; box-shadow: 0 0 0 4px #eceeef; animation: none; opacity: .7; }
+.recording-bar.is-paused .recording-wave-live i { background: #b3b8bd; }
 .recording-wave-live { display: flex; align-items: center; gap: 3px; flex: 1; min-width: 0; height: 32px; overflow: hidden; }
 .recording-wave-live i { display: block; flex: 0 0 auto; width: 3px; min-height: 6px; border-radius: 999px; background: #00a8b8; transition: height .08s ease; }
 .recording-timer { flex: 0 0 auto; color: var(--forest); font-variant-numeric: tabular-nums; font-size: .74rem; font-weight: 800; }
@@ -804,14 +809,14 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
 /* Premium action controls. */
 button { -webkit-tap-highlight-color: transparent; }
 button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offset: 2px; }
-.composer { grid-template-columns: 44px 44px 44px minmax(0, 1fr) 104px; gap: 8px; padding-top: 11px; }
-.composer input { height: 48px; min-height: 48px; border-color: #d4e2e8; border-radius: 16px; padding: 0 16px; font-size: .8rem; box-shadow: inset 0 1px 2px rgba(10,18,33,.025); }
-.composer button, .composer-action, .emoji-toggle { width: 44px; height: 44px; min-width: 44px !important; min-height: 44px; padding: 0 !important; border: 1px solid #d9e7ec; border-radius: 14px; color: #16364c !important; background: linear-gradient(145deg, #f7fbfd, #e8f2f6) !important; box-shadow: 0 5px 14px rgba(10,18,33,.06); transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+.composer { grid-template-columns: 44px minmax(0, 1fr) 44px 44px 44px; gap: 8px; padding-top: 11px; align-items: center; }
+.composer input { height: 48px; min-height: 48px; border-color: #d4e2e8; border-radius: 24px; padding: 0 16px; font-size: .8rem; box-shadow: inset 0 1px 2px rgba(10,18,33,.025); }
+.composer button, .composer-action, .emoji-toggle { width: 44px; height: 44px; min-width: 44px !important; min-height: 44px; padding: 0 !important; border: 1px solid #d9e7ec; border-radius: 50%; color: #16364c !important; background: linear-gradient(145deg, #f7fbfd, #e8f2f6) !important; box-shadow: 0 5px 14px rgba(10,18,33,.06); transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease; }
 .composer button:hover:not(:disabled) { border-color: #8adfe5; color: #087e88 !important; background: #effdff !important; box-shadow: 0 7px 18px rgba(9,142,153,.12); transform: translateY(-1px); }
 .composer button:active:not(:disabled) { transform: translateY(0) scale(.96); }
-.composer .send-button { width: 104px; min-width: 104px !important; border: 0; border-radius: 15px; color: white !important; background: linear-gradient(135deg, #071321, #12334a) !important; box-shadow: 0 8px 20px rgba(7,19,33,.2); }
-.composer .send-button:hover:not(:disabled) { color: white !important; background: linear-gradient(135deg, #0c2538, #0b7180) !important; }
-.composer .send-button .ui-icon { width: 17px; height: 17px; }
+.composer .send-button.round { width: 44px; min-width: 44px !important; border: 0; border-radius: 50%; color: white !important; background: linear-gradient(135deg, #071321, #12334a) !important; box-shadow: 0 8px 20px rgba(7,19,33,.2); }
+.composer .send-button.round:hover:not(:disabled) { color: white !important; background: linear-gradient(135deg, #0c2538, #0b7180) !important; }
+.composer .send-button.round .ui-icon { width: 19px; height: 19px; }
 .thread-actions button { transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease; }
 .thread-actions button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(10,18,33,.08); }
 .premium-dialog-button { display: inline-flex; width: auto; align-items: center; justify-content: center; gap: 8px; min-height: 44px !important; border-radius: 13px !important; padding: 0 16px !important; }
@@ -819,17 +824,16 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 .share-glyph { color: #092132; }
 
 @media (max-width: 720px) {
-  .composer { grid-template-columns: 40px 40px 40px minmax(0, 1fr) 48px; gap: 5px; padding-top: 7px; }
-  .composer button, .composer-action, .emoji-toggle { width: 40px; height: 42px; min-width: 40px !important; min-height: 42px; border-radius: 13px; }
-  .composer input { height: 44px; min-height: 44px; border-radius: 15px; padding: 0 12px; }
-  .composer .send-button { width: 48px; min-width: 48px !important; height: 44px; border-radius: 15px; }
-  .composer .send-button span { display: none; }
+  .composer { grid-template-columns: 40px minmax(0, 1fr) 40px 40px 40px; gap: 5px; padding-top: 7px; }
+  .composer button, .composer-action, .emoji-toggle { width: 40px; height: 42px; min-width: 40px !important; min-height: 42px; border-radius: 50%; }
+  .composer input { height: 44px; min-height: 44px; border-radius: 22px; padding: 0 12px; }
+  .composer .send-button.round { width: 40px; min-width: 40px !important; height: 42px; border-radius: 50%; }
 }
 
 @media (max-width: 370px) {
-  .composer { grid-template-columns: 36px 36px 36px minmax(0, 1fr) 44px; gap: 4px; }
+  .composer { grid-template-columns: 36px minmax(0, 1fr) 36px 36px 36px; gap: 4px; }
   .composer button, .composer-action, .emoji-toggle { width: 36px; min-width: 36px !important; }
-  .composer .send-button { width: 44px; min-width: 44px !important; }
+  .composer .send-button.round { width: 36px; min-width: 36px !important; }
 }
 
 /* Admin community analytics. */
