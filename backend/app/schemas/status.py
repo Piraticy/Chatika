@@ -9,6 +9,13 @@ class StatusCreateInput(BaseModel):
     media_url: Optional[str] = Field(default=None, max_length=255)
 
 
+class StatusViewerOut(BaseModel):
+    id: str
+    username: str
+    avatar_url: Optional[str] = None
+    viewed_at: datetime
+
+
 class StatusOut(BaseModel):
     id: str
     author_id: str
@@ -20,3 +27,5 @@ class StatusOut(BaseModel):
     expires_at: datetime
     is_official: bool = False
     is_own: bool = False
+    view_count: Optional[int] = None
+    viewers: Optional[list[StatusViewerOut]] = None

@@ -27,6 +27,10 @@ export function avatarGradient(seed) {
   return { background: `linear-gradient(135deg, ${from}, ${to})` };
 }
 
+export function avatarColors(seed) {
+  return AVATAR_PALETTE[hashSeed(seed) % AVATAR_PALETTE.length];
+}
+
 export function avatarInitial(username) {
   const trimmed = String(username || '').trim();
   return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';

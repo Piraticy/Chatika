@@ -3,7 +3,7 @@ import { APP_CREDIT, APP_VERSION } from '../lib/version';
 import ChatHub from './ChatHub';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 import { resolveMediaUrl } from '../lib/api';
-import { avatarGradient, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
+import { avatarColors, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
 import { chatBackgroundCss } from '../lib/chatBackground';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
@@ -30,23 +30,38 @@ function roomLabel(room, userId) {
   return room.participants?.find((participant) => participant.id !== userId)?.username || room.name;
 }
 
-// Sizing/shape lives inline (not just in CSS) so the avatar can never be
-// stretched by an unrelated cascade rule - each dimension is set directly
-// on the element, on every axis, with no room for an external override.
-// The outer box is a plain sized-and-clipped inline-block (no grid/flex of
-// its own) so it can't be affected by any layout-algorithm quirk in the
-// parent row; centering the glyph is delegated to a separate inner layer.
+// Avatars render as a real <img> (an SVG data URI when there's no uploaded
+// photo) rather than a styled div. Three earlier attempts sized a div via
+// CSS classes, then inline styles, then inline styles without aspect-ratio
+// - all verified correct in testing, yet the avatar kept coming back
+// stretched full-height on at least one real device. An <img> is a
+// "replaced element": browsers size and clip it against its own width/
+// height with a much more mature, consistent algorithm than a div's
+// flex/grid layout, which is exactly the mechanism the earlier attempts
+// depended on. This sidesteps that class of bug entirely instead of
+// tweaking it again.
 const AVATAR_SHAPES = {
   default: { size: 32, radius: 12 },
   large: { size: 40, radius: 14 },
   thread: { size: 34, radius: 12 }
 };
 
+function glyphAvatarUri(size, radius, from, to, glyph) {
+  const fontSize = Math.round(size * 0.44);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`
+    + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">`
+    + `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>`
+    + `<rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="url(#g)"/>`
+    + `<text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-weight="700" font-size="${fontSize}" fill="#ffffff">${glyph}</text>`
+    + `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 function Avatar({ user, size = 'default' }) {
   const shape = AVATAR_SHAPES[size] || AVATAR_SHAPES.default;
   const px = shape.size;
-  const outer = {
-    display: 'inline-block',
+  const imgStyle = {
+    display: 'block',
     width: px,
     height: px,
     minWidth: px,
@@ -56,33 +71,21 @@ function Avatar({ user, size = 'default' }) {
     flexGrow: 0,
     flexShrink: 0,
     flexBasis: px,
-    overflow: 'hidden',
     borderRadius: shape.radius,
+    objectFit: 'cover',
     verticalAlign: 'middle',
-    boxSizing: 'border-box',
-    lineHeight: 0
+    boxSizing: 'border-box'
   };
-  const centered = { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 850, lineHeight: 1, fontSize: Math.round(px * 0.42) };
   const preset = presetFromAvatarUrl(user?.avatar_url);
   if (user?.avatar_url && !preset) {
-    return (
-      <div className={`user-avatar-image ${size}`} style={outer}>
-        <img src={resolveMediaUrl(user.avatar_url)} alt="" style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
-      </div>
-    );
+    return <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" style={imgStyle} width={px} height={px} />;
   }
   if (preset) {
-    return (
-      <div className={`user-avatar ${size}`} style={outer} role="img" aria-label="Chatika avatar">
-        <div style={{ ...centered, ...presetGradient(preset) }}>{preset.glyph}</div>
-      </div>
-    );
+    const [from, to] = preset.colors;
+    return <img className={`user-avatar ${size}`} src={glyphAvatarUri(px, shape.radius, from, to, preset.glyph)} alt="" style={imgStyle} width={px} height={px} />;
   }
-  return (
-    <div className={`user-avatar ${size}`} style={outer} role="img" aria-label="Chatika avatar">
-      <div style={{ ...centered, ...avatarGradient(user?.id || user?.username) }}>{avatarInitial(user?.username)}</div>
-    </div>
-  );
+  const [from, to] = avatarColors(user?.id || user?.username);
+  return <img className={`user-avatar ${size}`} src={glyphAvatarUri(px, shape.radius, from, to, avatarInitial(user?.username))} alt="" style={imgStyle} width={px} height={px} />;
 }
 
 export default function ChatLayout({
@@ -124,6 +127,7 @@ export default function ChatLayout({
   statuses,
   onPostStatus,
   onDeleteStatus,
+  onViewStatus,
   onLoadCallHistory,
   onDeleteRoom,
   onDeleteMessage
@@ -590,6 +594,7 @@ export default function ChatLayout({
             onCreateGroup={onCreateGroup}
             onPostStatus={onPostStatus}
             onDeleteStatus={onDeleteStatus}
+            onViewStatus={onViewStatus}
             onLoadCallHistory={onLoadCallHistory}
             onDeleteRoom={onDeleteRoom}
             onDeleteMessage={onDeleteMessage}
@@ -638,19 +643,19 @@ export default function ChatLayout({
           {replyingTo && recordingPhase === 'idle' && <div className="reply-preview"><span>↩ Replying to @{replyingTo.sender_id === me.id ? me.username : replyingTo.sender_username || 'friend'}</span><strong>{replyingTo.text || 'Shared media'}</strong><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">×</button></div>}
 
           {recordingPhase === 'idle' && (
-            <form onSubmit={submitMessage} className="composer" ref={composerRef}>
+            <form onSubmit={submitMessage} className={draft.trim() ? 'composer composer-typing' : 'composer'} ref={composerRef}>
               <button type="button" className="composer-action" onClick={() => fileInputRef.current?.click()} disabled={!activeRoomId} aria-label="Attach"><UiIcon name="plus" /></button>
               <input ref={fileInputRef} className="file-input" type="file" accept="image/*,audio/*,video/*" onChange={handleFileChange} />
               <input name="text" enterKeyHint="send" placeholder={activeRoomId ? 'Message' : 'Choose a conversation'} disabled={!activeRoomId} value={draft} onChange={(event) => { setDraft(event.target.value); onTyping?.(Boolean(event.target.value.trim())); }} onBlur={() => onTyping?.(false)} />
-              <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji"><UiIcon name="smile" /></button>
-              <button type="button" className="composer-action" onClick={() => cameraInputRef.current?.click()} disabled={!activeRoomId} aria-label="Camera"><UiIcon name="camera" /></button>
+              {!draft.trim() && <button type="button" className="emoji-toggle" onClick={() => setEmojiOpen((value) => !value)} disabled={!activeRoomId} aria-label="Emoji"><UiIcon name="smile" /></button>}
+              {!draft.trim() && <button type="button" className="composer-action" onClick={() => cameraInputRef.current?.click()} disabled={!activeRoomId} aria-label="Camera"><UiIcon name="camera" /></button>}
               <input ref={cameraInputRef} className="file-input" type="file" accept="image/*" capture="environment" onChange={handleFileChange} />
               {draft.trim() ? (
                 <button type="submit" className="send-button round" disabled={!activeRoomId} aria-label="Send"><UiIcon name="send" /></button>
               ) : (
                 <button type="button" className="composer-action mic-action" onClick={startRecording} disabled={!activeRoomId} aria-label="Record a voice message"><UiIcon name="mic" /></button>
               )}
-              {emojiOpen && <div className="emoji-picker"><strong className="emoji-picker-title">Chatika expressions</strong>{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${findChatikaEmoji(emoji)?.label || emoji}`}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
+              {emojiOpen && !draft.trim() && <div className="emoji-picker"><strong className="emoji-picker-title">Chatika expressions</strong>{[...CHATIKA_EMOJIS.map((emoji) => emoji.code), ...QUICK_EMOJIS].map((emoji) => <button key={emoji} type="button" onClick={() => addEmoji(emoji)} aria-label={`Add ${findChatikaEmoji(emoji)?.label || emoji}`}>{findChatikaEmoji(emoji) ? <ChatikaEmoji emoji={findChatikaEmoji(emoji)} /> : emoji}</button>)}</div>}
             </form>
           )}
 

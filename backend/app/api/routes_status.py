@@ -2,12 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, is_designated_admin
 from app.db.session import get_db
-from app.models.entities import StatusUpdate, User
-from app.schemas.status import StatusCreateInput, StatusOut
+from app.models.entities import StatusUpdate, StatusView, User
+from app.schemas.status import StatusCreateInput, StatusOut, StatusViewerOut
 from app.services.ws_manager import ws_manager
 
 router = APIRouter(prefix='/status', tags=['status'])
@@ -33,6 +34,20 @@ def _serialize_status(status: StatusUpdate, user: User, viewer_id: str) -> Statu
         is_official=official,
         is_own=user.id == viewer_id,
     )
+
+
+def _status_view_stats(db: Session, status_id: str) -> tuple[int, list[StatusViewerOut]]:
+    rows = db.execute(
+        select(StatusView, User)
+        .join(User, User.id == StatusView.viewer_id)
+        .where(StatusView.status_id == status_id)
+        .order_by(StatusView.created_at.desc())
+    ).all()
+    viewers = [
+        StatusViewerOut(id=user.id, username=user.username, avatar_url=user.avatar_url, viewed_at=view.created_at)
+        for view, user in rows
+    ]
+    return len(viewers), viewers
 
 
 def _official_status() -> StatusOut:
@@ -61,7 +76,18 @@ def list_statuses(
         .order_by(StatusUpdate.created_at.desc())
         .limit(100)
     ).all()
-    serialized = [_serialize_status(status, user, current_user.id) for status, user in rows]
+    serialized = []
+    # View counts/viewer lists are only attached for the status's own author
+    # (or the admin, for community oversight) - other viewers never see who
+    # else viewed a status, matching the usual status/story privacy model.
+    can_see_any_views = is_designated_admin(current_user)
+    for status, user in rows:
+        output = _serialize_status(status, user, current_user.id)
+        if output.is_own or can_see_any_views:
+            view_count, viewers = _status_view_stats(db, status.id)
+            output.view_count = view_count
+            output.viewers = viewers
+        serialized.append(output)
     # Only fall back to the hardcoded welcome tile when the admin hasn't
     # posted a real official status - a genuine post always takes its place.
     has_real_official = any(item.is_official for item in serialized)
@@ -97,6 +123,29 @@ async def create_status(
     payload = {'event': 'status:new', 'data': output.model_dump(mode='json')}
     await ws_manager.broadcast_users(recipient_ids, payload)
     return output
+
+
+@router.post('/{status_id}/view', status_code=204)
+def record_status_view(
+    status_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    status = db.get(StatusUpdate, status_id)
+    if not status:
+        raise HTTPException(status_code=404, detail='Status not found')
+    if status.user_id == current_user.id:
+        return
+    existing = db.execute(
+        select(StatusView).where(StatusView.status_id == status_id, StatusView.viewer_id == current_user.id)
+    ).scalar_one_or_none()
+    if existing:
+        return
+    db.add(StatusView(status_id=status_id, viewer_id=current_user.id))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 
 @router.delete('/{status_id}', status_code=204)

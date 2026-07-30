@@ -24,6 +24,7 @@ function HubIcon({ name, size = 20, filled = false }) {
   if (name === 'spark') return <svg {...stroke}><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /></svg>;
   if (name === 'chevron') return <svg {...stroke}><path d="m9 18 6-6-6-6" /></svg>;
   if (name === 'trash') return <svg {...stroke}><path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m-9 0 .8 12.2c0 .9.8 1.6 1.7 1.6h5c.9 0 1.7-.7 1.7-1.6L18 7" /><path d="M10 11v6M14 11v6" /></svg>;
+  if (name === 'eye') return <svg {...stroke}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>;
   return <svg {...stroke}><circle cx="12" cy="12" r="9" /></svg>;
 }
 
@@ -106,6 +107,7 @@ export default function ChatHub({
   onCreateGroup,
   onPostStatus,
   onDeleteStatus,
+  onViewStatus,
   onLoadCallHistory,
   onStartCall,
   onDeleteRoom,
@@ -125,6 +127,15 @@ export default function ChatHub({
   const [composerOpen, setComposerOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusViewer, setStatusViewer] = useState(null);
+
+  // Keeps the open viewer's data (view_count/viewers in particular) in sync
+  // whenever `statuses` refreshes, instead of freezing at whatever snapshot
+  // was current the moment the viewer opened.
+  useEffect(() => {
+    if (!statusViewer) return;
+    const fresh = statuses.find((item) => item.id === statusViewer.id);
+    if (fresh && fresh !== statusViewer) setStatusViewer(fresh);
+  }, [statuses, statusViewer]);
   const [searchText, setSearchText] = useState('');
   const [results, setResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -389,7 +400,7 @@ export default function ChatHub({
         </section>
       </div>}
 
-      {statusViewer && <PulseViewer key={statusViewer.id} status={statusViewer} onClose={() => setStatusViewer(null)} onDelete={deleteViewedStatus} />}
+      {statusViewer && <PulseViewer key={statusViewer.id} status={statusViewer} onClose={() => setStatusViewer(null)} onDelete={deleteViewedStatus} onView={onViewStatus} />}
     </section>
   );
 }
@@ -439,10 +450,19 @@ const CallHistoryRow = React.memo(function CallHistoryRow({ call, me, room, onCa
   );
 });
 
-function PulseViewer({ status, onClose, onDelete }) {
+function PulseViewer({ status, onClose, onDelete, onView }) {
   const [progress, setProgress] = useState(0);
   const isVideo = isVideoMedia(status.media_url);
   const canDelete = status.is_own && status.id !== 'chatika-official';
+  const canSeeViews = status.view_count != null;
+
+  useEffect(() => {
+    onView?.(status.id);
+    // Only on mount for this status - re-opening the same status shouldn't
+    // spam the endpoint (the backend also dedupes by viewer, so this is
+    // just avoiding a wasted request, not a correctness requirement).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.id]);
 
   useEffect(() => {
     if (isVideo) return undefined; // video drives its own timing via onTimeUpdate/onEnded below
@@ -486,6 +506,21 @@ function PulseViewer({ status, onClose, onDelete }) {
             : <img src={resolveMediaUrl(status.media_url)} alt="Status update" />)}
           {(status.text || !status.media_url) && <p className="pulse-viewer-text">{status.text || 'Shared a new update.'}</p>}
         </div>
+        {canSeeViews && (
+          <div className="pulse-viewer-views">
+            <span className="pulse-view-count"><HubIcon name="eye" size={15} /> {status.view_count} {status.view_count === 1 ? 'view' : 'views'}</span>
+            {status.viewers?.length > 0 && (
+              <div className="pulse-viewer-list">
+                {status.viewers.map((viewer) => (
+                  <span key={viewer.id} className="pulse-viewer-chip">
+                    <HubAvatar user={viewer} size="tiny" />
+                    @{viewer.username}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

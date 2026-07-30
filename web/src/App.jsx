@@ -536,6 +536,25 @@ export default function App() {
     setStatuses((prev) => prev.filter((item) => item.id !== statusId));
   }
 
+  async function viewStatus(statusId) {
+    if (!statusId || statusId === 'chatika-official') return;
+    // Best-effort - a missed view ping shouldn't surface an error to the viewer.
+    try {
+      await authedApi(`/status/${statusId}/view`, { method: 'POST', token });
+    } catch (_error) {
+      // ignore
+    }
+    // Refresh so an owner (or admin) opening their own status right after
+    // someone else viewed it sees the up-to-date count immediately, instead
+    // of only on the next full app reload.
+    try {
+      const fresh = await authedApi('/status', { token });
+      setStatuses(fresh);
+    } catch (_error) {
+      return;
+    }
+  }
+
   async function loadCallHistory() {
     return authedApi('/chat/call-history?limit=60', { token });
   }
@@ -1495,6 +1514,7 @@ export default function App() {
         }}
         onPostStatus={postStatus}
         onDeleteStatus={deleteStatus}
+        onViewStatus={viewStatus}
         onLoadCallHistory={loadCallHistory}
         onDeleteRoom={deleteRoom}
         onDeleteMessage={deleteMessage}
