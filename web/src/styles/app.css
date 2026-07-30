@@ -713,14 +713,15 @@ input:focus { border-color: #00bccc; background: white; box-shadow: 0 0 0 4px rg
   .auth-panel:has(input:focus) .mode-switch { margin-bottom: 10px; }
   .chat-root { display: block; padding: 0; background: #f7fbff; }
   .thread { width: 100%; height: 100%; min-height: 0; max-height: none; grid-template-rows: auto minmax(0, 1fr) auto; border: 0; border-radius: 0; padding: max(8px, env(safe-area-inset-top)) 10px max(6px, env(safe-area-inset-bottom)); background: #f7fbff; box-shadow: none; }
-  .thread-head { min-height: 48px; padding: 2px 0 7px; }
-  .thread-title-wrap { min-width: 0; gap: 7px; }
-  .thread-head h2 { max-width: min(34vw, 170px); font-size: 1.05rem; }
+  .thread-head { min-height: 40px; padding: 2px 0 6px; }
+  .thread-title-wrap { min-width: 0; gap: 6px; }
+  .thread-head h2 { max-width: min(34vw, 170px); font-size: .98rem; }
   .thread-head .eyebrow { font-size: .52rem; }
-  .thread-head small { max-width: 150px; font-size: .58rem; }
-  .thread-actions { gap: 4px; }
-  .call-button, .share-button, .icon-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; padding: 0; border-radius: 11px; }
+  .thread-head small { max-width: 150px; font-size: .56rem; }
+  .thread-actions { gap: 3px; }
+  .call-button, .share-button, .icon-button { width: 30px; height: 30px; min-width: 30px; min-height: 30px; padding: 0; border-radius: 9px; }
   .call-button span, .share-button span { display: none; }
+  .call-button svg, .share-button svg, .icon-button svg { width: 15px; height: 15px; }
   .messages { min-height: 0; padding: 9px 1px; gap: 7px; overscroll-behavior: contain; }
   .msg { max-width: 82%; }
   .compose-area { min-width: 0; padding-bottom: 0; background: #f7fbff; }
@@ -824,16 +825,16 @@ button:focus-visible { outline: 3px solid rgba(20, 210, 226, .28); outline-offse
 .share-glyph { color: #092132; }
 
 @media (max-width: 720px) {
-  .composer { grid-template-columns: 40px minmax(0, 1fr) 40px 40px 40px; gap: 5px; padding-top: 7px; }
-  .composer button, .composer-action, .emoji-toggle { width: 40px; height: 42px; min-width: 40px !important; min-height: 42px; border-radius: 50%; }
-  .composer input { height: 44px; min-height: 44px; border-radius: 22px; padding: 0 12px; }
-  .composer .send-button.round { width: 40px; min-width: 40px !important; height: 42px; border-radius: 50%; }
+  .composer { grid-template-columns: 34px minmax(0, 1fr) 34px 34px 34px; gap: 5px; padding-top: 6px; }
+  .composer button, .composer-action, .emoji-toggle { width: 34px; height: 36px; min-width: 34px !important; min-height: 36px; border-radius: 50%; }
+  .composer input { height: 38px; min-height: 38px; border-radius: 19px; padding: 0 12px; }
+  .composer .send-button.round { width: 34px; min-width: 34px !important; height: 36px; border-radius: 50%; }
 }
 
 @media (max-width: 370px) {
-  .composer { grid-template-columns: 36px minmax(0, 1fr) 36px 36px 36px; gap: 4px; }
-  .composer button, .composer-action, .emoji-toggle { width: 36px; min-width: 36px !important; }
-  .composer .send-button.round { width: 36px; min-width: 36px !important; }
+  .composer { grid-template-columns: 31px minmax(0, 1fr) 31px 31px 31px; gap: 4px; }
+  .composer button, .composer-action, .emoji-toggle { width: 31px; height: 33px; min-width: 31px !important; min-height: 33px; }
+  .composer .send-button.round { width: 31px; min-width: 31px !important; height: 33px; }
 }
 
 /* Admin community analytics. */

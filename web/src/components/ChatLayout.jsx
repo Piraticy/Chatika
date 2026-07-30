@@ -33,47 +33,54 @@ function roomLabel(room, userId) {
 // Sizing/shape lives inline (not just in CSS) so the avatar can never be
 // stretched by an unrelated cascade rule - each dimension is set directly
 // on the element, on every axis, with no room for an external override.
+// The outer box is a plain sized-and-clipped inline-block (no grid/flex of
+// its own) so it can't be affected by any layout-algorithm quirk in the
+// parent row; centering the glyph is delegated to a separate inner layer.
 const AVATAR_SHAPES = {
-  default: { size: 36, radius: 13 },
-  large: { size: 44, radius: 15 },
-  thread: { size: 40, radius: 14 }
+  default: { size: 32, radius: 12 },
+  large: { size: 40, radius: 14 },
+  thread: { size: 34, radius: 12 }
 };
 
 function Avatar({ user, size = 'default' }) {
   const shape = AVATAR_SHAPES[size] || AVATAR_SHAPES.default;
-  const box = {
-    display: 'block',
-    width: shape.size,
-    height: shape.size,
-    minWidth: shape.size,
-    minHeight: shape.size,
-    maxWidth: shape.size,
-    maxHeight: shape.size,
-    aspectRatio: '1 / 1',
-    flex: '0 0 auto',
+  const px = shape.size;
+  const outer = {
+    display: 'inline-block',
+    width: px,
+    height: px,
+    minWidth: px,
+    minHeight: px,
+    maxWidth: px,
+    maxHeight: px,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: px,
     overflow: 'hidden',
     borderRadius: shape.radius,
-    boxSizing: 'border-box'
+    verticalAlign: 'middle',
+    boxSizing: 'border-box',
+    lineHeight: 0
   };
-  const glyphBox = { ...box, display: 'grid', placeItems: 'center', color: 'white', fontWeight: 850, lineHeight: 1, fontSize: Math.round(shape.size * 0.42) };
+  const centered = { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 850, lineHeight: 1, fontSize: Math.round(px * 0.42) };
   const preset = presetFromAvatarUrl(user?.avatar_url);
   if (user?.avatar_url && !preset) {
     return (
-      <div className={`user-avatar-image ${size}`} style={box}>
+      <div className={`user-avatar-image ${size}`} style={outer}>
         <img src={resolveMediaUrl(user.avatar_url)} alt="" style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
     );
   }
   if (preset) {
     return (
-      <div className={`user-avatar ${size}`} style={{ ...glyphBox, ...presetGradient(preset) }} role="img" aria-label="Chatika avatar">
-        {preset.glyph}
+      <div className={`user-avatar ${size}`} style={outer} role="img" aria-label="Chatika avatar">
+        <div style={{ ...centered, ...presetGradient(preset) }}>{preset.glyph}</div>
       </div>
     );
   }
   return (
-    <div className={`user-avatar ${size}`} style={{ ...glyphBox, ...avatarGradient(user?.id || user?.username) }} role="img" aria-label="Chatika avatar">
-      {avatarInitial(user?.username)}
+    <div className={`user-avatar ${size}`} style={outer} role="img" aria-label="Chatika avatar">
+      <div style={{ ...centered, ...avatarGradient(user?.id || user?.username) }}>{avatarInitial(user?.username)}</div>
     </div>
   );
 }

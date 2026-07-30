@@ -60,7 +60,16 @@ export default function App() {
   const [adminError, setAdminError] = useState('');
   const [typingByRoom, setTypingByRoom] = useState({});
   const [dataSaver, setDataSaver] = useState(localStorage.getItem('chatika_data_saver') === 'true');
-  const [chatBackground, setChatBackground] = useState(localStorage.getItem('chatika_chat_background') || 'classic');
+  const [chatBackground, setChatBackground] = useState(() => {
+    // One-time migration: the wallpaper picker's first release auto-saved
+    // 'classic' for everyone before anyone had a chance to choose - force
+    // the new default once, then respect whatever the user picks after.
+    if (!localStorage.getItem('chatika_chat_background_migrated_v1')) {
+      localStorage.setItem('chatika_chat_background_migrated_v1', 'true');
+      return 'soft-waves';
+    }
+    return localStorage.getItem('chatika_chat_background') || 'soft-waves';
+  });
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [localShareStream, setLocalShareStream] = useState(null);
