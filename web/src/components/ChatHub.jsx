@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveMediaUrl } from '../lib/api';
 import { avatarGradient, avatarInitial, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
+import { CHAT_BACKGROUNDS } from '../lib/chatBackground';
 
 function HubIcon({ name, size = 20, filled = false }) {
   const box = { width: size, height: size, viewBox: '0 0 24 24', 'aria-hidden': true };
@@ -114,6 +115,8 @@ export default function ChatHub({
   onEnableNotifications,
   dataSaver,
   onToggleDataSaver,
+  chatBackground,
+  onChangeChatBackground,
   onLogout,
   onOpenAdmin,
   isAdmin
@@ -331,6 +334,21 @@ export default function ChatHub({
           <article><span className="settings-icon"><HubIcon name="spark" /></span><div><strong>Notifications</strong><small>{notificationStatus === 'on' ? 'Enabled for messages and calls' : 'Stay connected when Chatika is closed'}</small></div>{notificationStatus === 'on' ? <b className="settings-good">On</b> : <button type="button" onClick={onEnableNotifications}>Enable</button>}</article>
           <article><span className="settings-icon"><HubIcon name="settings" /></span><div><strong>{dataSaver ? 'Data saver' : 'High quality media'}</strong><small>{dataSaver ? 'Lighter media for lower data use' : 'Full quality when your connection allows'}</small></div><button type="button" onClick={onToggleDataSaver}>{dataSaver ? 'On' : 'Off'}</button></article>
           <article><span className="settings-icon"><HubIcon name="spark" /></span><div><strong>Night theme</strong><small>Changes automatically with your device time</small></div><b className="settings-good">Auto</b></article>
+          <article className="settings-background"><span className="settings-icon"><HubIcon name="spark" /></span><div><strong>Chat background</strong><small>Pick a wallpaper for your conversations</small></div></article>
+          <div className="settings-background-swatches">
+            {CHAT_BACKGROUNDS.map((bg) => (
+              <button
+                key={bg.id}
+                type="button"
+                className={chatBackground === bg.id ? 'background-swatch active' : 'background-swatch'}
+                style={{ background: bg.swatch }}
+                onClick={() => onChangeChatBackground?.(bg.id)}
+                aria-label={bg.label}
+                aria-pressed={chatBackground === bg.id}
+                title={bg.label}
+              />
+            ))}
+          </div>
           {isAdmin && <article><span className="settings-icon"><HubIcon name="friends" /></span><div><strong>Admin control</strong><small>Users, feedback, and beta activity</small></div><button type="button" onClick={onOpenAdmin}>Open</button></article>}
           <button type="button" className="hub-logout" onClick={onLogout}>Log out</button>
         </section>}

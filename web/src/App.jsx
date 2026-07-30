@@ -60,6 +60,7 @@ export default function App() {
   const [adminError, setAdminError] = useState('');
   const [typingByRoom, setTypingByRoom] = useState({});
   const [dataSaver, setDataSaver] = useState(localStorage.getItem('chatika_data_saver') === 'true');
+  const [chatBackground, setChatBackground] = useState(localStorage.getItem('chatika_chat_background') || 'classic');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [localShareStream, setLocalShareStream] = useState(null);
@@ -134,6 +135,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('chatika_data_saver', String(dataSaver));
   }, [dataSaver]);
+
+  useEffect(() => {
+    localStorage.setItem('chatika_chat_background', chatBackground);
+  }, [chatBackground]);
 
   useEffect(() => {
     if (notificationStatus !== 'loading') {
@@ -1466,6 +1471,8 @@ export default function App() {
         }}
         dataSaver={dataSaver}
         onToggleDataSaver={() => setDataSaver((value) => !value)}
+        chatBackground={chatBackground}
+        onChangeChatBackground={setChatBackground}
         callActive={callActive}
         onStartCall={(kind, roomId) => {
           if (callActive || incomingCall) {

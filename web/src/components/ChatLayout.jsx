@@ -4,6 +4,7 @@ import ChatHub from './ChatHub';
 import { CHATIKA_EMOJIS, findChatikaEmoji } from '../lib/emojis';
 import { resolveMediaUrl } from '../lib/api';
 import { avatarGradient, avatarInitial, AVATAR_PRESETS, presetFromAvatarUrl, presetGradient } from '../lib/avatar';
+import { chatBackgroundCss } from '../lib/chatBackground';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🔥', '👍', '🙏', '🎉', '😎', '💬', '❤️', '😭', '🤝'];
 const REACTION_EMOJIS = ['👍', '❤️', CHATIKA_EMOJIS[0].code, CHATIKA_EMOJIS[1].code];
@@ -29,20 +30,51 @@ function roomLabel(room, userId) {
   return room.participants?.find((participant) => participant.id !== userId)?.username || room.name;
 }
 
+// Sizing/shape lives inline (not just in CSS) so the avatar can never be
+// stretched by an unrelated cascade rule - each dimension is set directly
+// on the element, on every axis, with no room for an external override.
+const AVATAR_SHAPES = {
+  default: { size: 36, radius: 13 },
+  large: { size: 44, radius: 15 },
+  thread: { size: 40, radius: 14 }
+};
+
 function Avatar({ user, size = 'default' }) {
+  const shape = AVATAR_SHAPES[size] || AVATAR_SHAPES.default;
+  const box = {
+    display: 'block',
+    width: shape.size,
+    height: shape.size,
+    minWidth: shape.size,
+    minHeight: shape.size,
+    maxWidth: shape.size,
+    maxHeight: shape.size,
+    aspectRatio: '1 / 1',
+    flex: '0 0 auto',
+    overflow: 'hidden',
+    borderRadius: shape.radius,
+    boxSizing: 'border-box'
+  };
+  const glyphBox = { ...box, display: 'grid', placeItems: 'center', color: 'white', fontWeight: 850, lineHeight: 1, fontSize: Math.round(shape.size * 0.42) };
   const preset = presetFromAvatarUrl(user?.avatar_url);
-  if (user?.avatar_url && !preset) return <img className={`user-avatar-image ${size}`} src={resolveMediaUrl(user.avatar_url)} alt="" />;
+  if (user?.avatar_url && !preset) {
+    return (
+      <div className={`user-avatar-image ${size}`} style={box}>
+        <img src={resolveMediaUrl(user.avatar_url)} alt="" style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+    );
+  }
   if (preset) {
     return (
-      <span className={`user-avatar ${size}`} style={presetGradient(preset)} role="img" aria-label="Chatika avatar">
+      <div className={`user-avatar ${size}`} style={{ ...glyphBox, ...presetGradient(preset) }} role="img" aria-label="Chatika avatar">
         {preset.glyph}
-      </span>
+      </div>
     );
   }
   return (
-    <span className={`user-avatar ${size}`} style={avatarGradient(user?.id || user?.username)} role="img" aria-label="Chatika avatar">
+    <div className={`user-avatar ${size}`} style={{ ...glyphBox, ...avatarGradient(user?.id || user?.username) }} role="img" aria-label="Chatika avatar">
       {avatarInitial(user?.username)}
-    </span>
+    </div>
   );
 }
 
@@ -76,6 +108,8 @@ export default function ChatLayout({
   onOpenAdmin,
   dataSaver,
   onToggleDataSaver,
+  chatBackground,
+  onChangeChatBackground,
   callActive,
   onStartCall,
   shareActive,
@@ -169,9 +203,21 @@ export default function ChatLayout({
     recordingCancelledRef.current = true;
     recorderRef.current?.stop();
     recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recorderStreamRef.current = null;
     stopWaveform();
     if (previewClipRef.current?.url) URL.revokeObjectURL(previewClipRef.current.url);
   }, []);
+
+  // The granted mic stream stays open between recordings in the same chat
+  // (so re-recording doesn't re-trigger the OS permission prompt), but is
+  // released as soon as the user leaves this conversation, rather than for
+  // the whole app session.
+  useEffect(() => () => {
+    if (recordingPhase === 'idle') {
+      recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recorderStreamRef.current = null;
+    }
+  }, [activeRoomId]);
 
   useEffect(() => { previewClipRef.current = previewClip; }, [previewClip]);
 
@@ -350,24 +396,28 @@ export default function ChatLayout({
       return;
     }
     try {
-      const permission = await navigator.permissions?.query?.({ name: 'microphone' }).catch(() => null);
-      if (permission?.state === 'denied') {
-        setLocalError('Microphone access is blocked. Enable it in your browser settings to record a voice message.');
-        return;
+      let stream = recorderStreamRef.current;
+      const streamIsLive = stream?.getTracks().some((track) => track.readyState === 'live');
+      if (!streamIsLive) {
+        const permission = await navigator.permissions?.query?.({ name: 'microphone' }).catch(() => null);
+        if (permission?.state === 'denied') {
+          setLocalError('Microphone access is blocked. Enable it in your browser settings to record a voice message.');
+          return;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recorderStreamRef.current = stream;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const requestedMimeType = VOICE_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported?.(mimeType));
       const recorder = requestedMimeType ? new MediaRecorder(stream, { mimeType: requestedMimeType }) : new MediaRecorder(stream);
       const roomId = activeRoomId;
       recorderChunksRef.current = [];
-      recorderStreamRef.current = stream;
       recorderRef.current = recorder;
       recordingCancelledRef.current = false;
       recorder.ondataavailable = (event) => event.data.size && recorderChunksRef.current.push(event.data);
       recorder.onstop = () => {
         stopWaveform();
-        stream.getTracks().forEach((track) => track.stop());
-        recorderStreamRef.current = null;
+        // The stream itself is left open (see the effects above) so the
+        // next recording in this chat can reuse it without a fresh prompt.
         recorderRef.current = null;
         if (recordingCancelledRef.current) {
           setPreviewClip(null);
@@ -542,6 +592,8 @@ export default function ChatLayout({
             onEnableNotifications={onEnableNotifications}
             dataSaver={dataSaver}
             onToggleDataSaver={onToggleDataSaver}
+            chatBackground={chatBackground}
+            onChangeChatBackground={onChangeChatBackground}
             onLogout={onLogout}
             onOpenAdmin={onOpenAdmin}
             isAdmin={isAdmin}
@@ -570,7 +622,7 @@ export default function ChatLayout({
             <button type="button" className={shareActive ? 'share-button active' : 'share-button'} onClick={onShareScreen} disabled={!activeRoomId} aria-label="Share screen"><UiIcon name="screen" /><span>{shareActive ? 'Sharing' : 'Share screen'}</span></button>
           </div>
         </header>
-        <section className="messages" ref={messagesRef} onScroll={saveReadingPosition}>
+        <section className="messages" ref={messagesRef} onScroll={saveReadingPosition} style={chatBackgroundCss(chatBackground) ? { background: chatBackgroundCss(chatBackground) } : undefined}>
           {!orderedMessages.length && <div className="empty-chat"><h3>{activeRoom ? 'Say hello' : 'Start a conversation'}</h3><p>{activeRoom ? 'Messages, calls, and media stay together here.' : 'Add a friend by their Chatika username.'}</p></div>}
           {orderedMessages.map((message) => <MessageBubble key={message.id} message={message} me={me} read={Boolean(readByMessage?.[message.id])} delivered={Boolean(deliveredByMessage?.[message.id])} actionOpen={actionMessageId === message.id} onToggle={toggleAction} onReply={startReply} onReact={chooseReaction} onDelete={deleteMessage} />)}
           {typingText && <div className="typing-indicator">{typingText}</div>}
